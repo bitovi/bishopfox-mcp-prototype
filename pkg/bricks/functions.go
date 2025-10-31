@@ -11,12 +11,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime/types"
 )
 
+// A function group is a group of functions with a description. The name and description
+// might not be used in the model context.
 type FunctionGroup struct {
 	Name        string
 	Description string
 	Functions   map[string]Function
 }
 
+// A function is an invokable action that will be shared in the model context schema.
 type Function struct {
 	Name        string
 	Description string
@@ -24,18 +27,22 @@ type Function struct {
 	Handler     FunctionHandler
 }
 
+// Signature for callable functions via the model context.
 type FunctionHandler func(FunctionContext) (any, error)
 
+// A set of functions organized into groups.
 type FunctionSet struct {
 	Groups map[string]FunctionGroup
 }
 
+// Create a new function set with an empty group mapping.
 func NewFunctionSet() *FunctionSet {
 	return &FunctionSet{
 		Groups: make(map[string]FunctionGroup),
 	}
 }
 
+// Convert the given function information into a Bedrock function definition.
 func createBedrockFunctionDefinition(name string, description string, params any) types.FunctionDefinition {
 	var def types.FunctionDefinition
 	def.Name = &name
@@ -82,6 +89,7 @@ func createBedrockFunctionDefinition(name string, description string, params any
 	return def
 }
 
+// Convert the function set into a list of Bedrock Agent Action Groups for configuration.
 func (fs *FunctionSet) GetActionGroups() []types.AgentActionGroup {
 	var actionGroups []types.AgentActionGroup
 	for _, group := range fs.Groups {
@@ -106,6 +114,8 @@ func (fs *FunctionSet) GetActionGroups() []types.AgentActionGroup {
 	return actionGroups
 }
 
+// Add a new function group. The name and description might not be used in the model
+// context, depending on the implementation.
 func (fs *FunctionSet) AddGroup(name string, description string) {
 	group := FunctionGroup{
 		Name:        name,
@@ -128,8 +138,10 @@ func (fs *FunctionSet) AddFunction(group string, name string, description string
 	fs.Groups[group].Functions[name] = fn
 }
 
+// Error if the function or group doesn't exist.
 var ErrNoFunction = errors.New("no function found")
 
+// Invoke a function by group and name with the given JSON marshalled input.
 func (fs *FunctionSet) Invoke(ctx context.Context, group string, function string, input []byte) (any, error) {
 	fg, ok := fs.Groups[group]
 	if !ok {
@@ -146,13 +158,14 @@ func (fs *FunctionSet) Invoke(ctx context.Context, group string, function string
 	return fn.Handler(fct)
 }
 
-// FunctionContext carries user data and call parameters for a function invocation.
+// FunctionContext carries user data and call parameters for a function invocation. Maybe
+// we should change this to a context value though, rather than making a new type.
 type FunctionContext struct {
 	context.Context
 	Input []byte
 }
 
-// Wrap the given JSON text in a FunctionContext.
+// Wrap the given JSON input in a FunctionContext for passing to handlers.
 func FunctionContextFromJSON(ctx context.Context, input []byte) FunctionContext {
 	return FunctionContext{
 		Input:   input,
@@ -160,6 +173,7 @@ func FunctionContextFromJSON(ctx context.Context, input []byte) FunctionContext 
 	}
 }
 
+// Bind the input to the given structure. Panics if unmarshalling fails.
 func (c *FunctionContext) MustBind(out any) {
 	err := json.Unmarshal(c.Input, out)
 	if err != nil {

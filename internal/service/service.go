@@ -13,19 +13,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// The key that holds QueryContext.
 type QueryContextKey struct{}
 
+// Holds authentication information for queries/tools.
 type QueryContext struct {
 	OrgID         uuid.UUID
 	Authorization string
 }
 
+// Service interface for consumers.
 type Service interface {
 	Ask(ctx context.Context, query string, orgID uuid.UUID, authorization string) (string, error)
 	WrapContextForQuery(ctx context.Context, orgID uuid.UUID, authorization string) context.Context
 	GetFunctions() *bricks.FunctionSet
 }
 
+// Main/default service implementation.
 type MainService struct {
 	Agent     bricks.Agent
 	functions *bricks.FunctionSet
@@ -36,10 +40,13 @@ var queryAssetsDesc string
 
 var ErrSelfCheckFailed = errors.New("self check failed")
 
+// Returns the database connection URL as set in the environment. Empty values should be
+// treated as an initialization error.
 func (s *MainService) getDBUrl() string {
 	return os.Getenv("POSTGRES_URL")
 }
 
+// Create the service.
 func CreateMainService() (Service, error) {
 	svc := &MainService{}
 
@@ -60,7 +67,7 @@ func CreateMainService() (Service, error) {
 
 	// Self Test
 	if svc.getDBUrl() == "" {
-		return nil, fmt.Errorf("%w; POSTGRES_URL needs to be set to the database connection URL.", ErrSelfCheckFailed)
+		return nil, fmt.Errorf("%w; POSTGRES_URL needs to be set to the database connection URL", ErrSelfCheckFailed)
 	}
 
 	return svc, nil
@@ -75,6 +82,9 @@ func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
 	return s.Agent.Query(s.WrapContextForQuery(ctx, orgID, authorization), query)
 }
 
+// Wrap a given context for an agent query, adding authorization information. This context
+// is passed through the agent to functions. Particularly useful for forwarding user
+// authentication and organization restrictions.
 func (s *MainService) WrapContextForQuery(ctx context.Context, orgID uuid.UUID,
 	authorization string) context.Context {
 	qc := QueryContext{
@@ -84,6 +94,8 @@ func (s *MainService) WrapContextForQuery(ctx context.Context, orgID uuid.UUID,
 	return context.WithValue(ctx, QueryContextKey{}, qc)
 }
 
+// Functions are exposed so they can be bound to external access like MCP servers. The
+// functions themselves are bound to this service instance during initialization.
 func (s *MainService) GetFunctions() *bricks.FunctionSet {
 	return s.functions
 }

@@ -15,15 +15,28 @@ import (
 
 var ErrMissingContext = errors.New("missing required context value")
 
+// This is an example request schema.
+//   - json: Name of the field exposed in the MCP.
+//   - desc: Description shown in the MCP tool listing. This is typically a shorter
+//     description as you can leave the main instructions in the upper
+//     function-level description.
+//   - required: Whether the field is required. Set to 'true' to reflect in the MCP schema
+//     that the field is required.
 type GetWeatherRequest struct {
 	City string `json:"city" desc:"The name of the city to get weather for" required:"true"`
 }
 
+// This is an example response schema. The MCP supports output schemas. Bedrock Action
+// Groups do not. Currently, we are not implementing MCP output schemas (see mcp.go). We
+// believe that output schemas are not entirely useful for LLMs.
 type GetWeatherResponse struct {
 	Temperature string `json:"temperature"`
 	Condition   string `json:"condition"`
 }
 
+// Example function implementation. When an LLM makes a tool request, it is routed to
+// these handlers. The flow for Bedrock invoking a function hosted by the client
+// application is referred to as RETURN_CONTROL.
 func (svc *MainService) GetWeatherFunction(c bricks.FunctionContext) (any, error) {
 	var req GetWeatherRequest
 	c.MustBind(&req)
@@ -43,14 +56,13 @@ func (svc *MainService) GetWeatherFunction(c bricks.FunctionContext) (any, error
 	return response, nil
 }
 
+// Input schema for querying assets with SQL. Output is a text string.
 type QueryAssetsRequest struct {
 	Query string `json:"query" desc:"The SQL query to execute" required:"true"`
 }
 
-type SearchAssetsResponse struct {
-	Results []string `json:"results"`
-}
-
+// Convert an arbitrary SQL result to a string representation. Fields are separated by
+// '|'. Certain field types may not be supported properly.
 func pgRowToString(rows pgx.Rows) (string, error) {
 	values, err := rows.Values()
 	if err != nil {
@@ -83,6 +95,9 @@ func pgRowToString(rows pgx.Rows) (string, error) {
 	return strings.Join(rowStrings, "|"), nil
 }
 
+// Handler for query_assets. Queries the asset database with a given SQL query and returns
+// the result. Enforces row security so that the query can only access the rows for the
+// organization in the context.
 func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, error) {
 	var req QueryAssetsRequest
 	c.MustBind(&req)
@@ -105,6 +120,7 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 
 	err = pgx.BeginFunc(c, conn, func(tx pgx.Tx) error {
 		_, err := tx.Exec(c, `
+			
 			SET LOCAL app.org_id = '`+qc.OrgID.String()+`';
 			SET LOCAL ROLE customer_query_role;
 		`)

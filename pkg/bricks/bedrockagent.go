@@ -18,10 +18,12 @@ import (
 type BedrockInvokeInput = types.FunctionInvocationInput
 type BedrockInvokeOutput = types.FunctionResult
 
+// BedrockAgent is an agent implementation that uses AWS Bedrock Agent Runtime.
 type BedrockAgent struct {
 	Config BedrockAgentConfig
 }
 
+// Configuration input for a BedrockAgent, passed to NewBedrockAgent.
 type BedrockAgentConfig struct {
 	AgentName   string
 	Model       string
@@ -29,8 +31,10 @@ type BedrockAgentConfig struct {
 	Functions   *FunctionSet
 }
 
+// AWS Client
 var bedrockAgentRuntimeClient *bedrockagentruntime.Client
 
+// Returns the AWS client singleton.
 func getBedrockAgentRuntime() *bedrockagentruntime.Client {
 	if bedrockAgentRuntimeClient == nil {
 		cfg, err := config.LoadDefaultConfig(context.TODO())
