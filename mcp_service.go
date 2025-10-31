@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"runtime/debug"
 
 	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
@@ -73,7 +74,12 @@ func runMCPServer(svc service.Service) {
 		server.WithEndpointPath("/mcp"),
 	)
 
-	binding := ":8102"
+	mcpPort := os.Getenv("MCP_PORT")
+	if mcpPort == "" {
+		mcpPort = "8102"
+	}
+
+	binding := ":" + mcpPort
 	log.Infoln("Starting MCP server on", binding)
 	if err := httpServer.Start(binding); err != nil {
 		log.Errorf("Streamable HTTP server error: %v", err)

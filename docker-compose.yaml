@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - ./config/setup.sql:/docker-entrypoint-initdb.d/setup.sql
     healthcheck:
@@ -24,8 +24,8 @@ services:
     volumes:
       - ./:/app
     ports:
-      - "8110:8100" # http://localhost:8110/ask
-      - "8112:8102" # http://localhost:8112/mcp
+      - "8110:8110" # http://localhost:8110/ask
+      - "8112:8112" # http://localhost:8112/mcp
     env_file:
       - .app.env
     command: go run .

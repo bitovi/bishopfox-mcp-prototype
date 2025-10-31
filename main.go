@@ -17,8 +17,6 @@ func main() {
 	log.SetLevel(log.DebugLevel)
 	log.Infoln("Starting test service")
 
-	os.Setenv("AWS_PROFILE", "bfbedrock")
-
 	svc, err := service.CreateMainService()
 	if err != nil {
 		log.Errorf("Failed to create service: %v", err)
@@ -27,8 +25,13 @@ func main() {
 	router := setupRouter(svc)
 	go runMCPServer(svc)
 
+	apiPort := os.Getenv("API_PORT")
+	if apiPort == "" {
+		apiPort = "8100"
+	}
+
 	srv := &http.Server{
-		Addr:    ":8100",
+		Addr:    ":" + apiPort,
 		Handler: router,
 	}
 
