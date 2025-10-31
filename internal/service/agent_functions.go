@@ -1,10 +1,11 @@
 package service
 
 import (
-	"bishopfox-mcp-prototype/pkg/bricks"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

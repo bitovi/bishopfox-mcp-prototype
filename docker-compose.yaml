@@ -11,3 +11,24 @@ services:
       - "5432:5432"
     volumes:
       - ./config/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mydb && psql -U postgres -d mydb -c 'SELECT COUNT(*) FROM assets;' > /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  app:
+    image: golang:trixie
+    container_name: golang_app
+    working_dir: /app
+    volumes:
+      - ./:/app
+    ports:
+      - "8110:8100" # http://localhost:8110/ask
+      - "8112:8102" # http://localhost:8112/mcp
+    env_file:
+      - .app.env
+    command: go run .
+    depends_on:
+      postgres:
+        condition: service_healthy

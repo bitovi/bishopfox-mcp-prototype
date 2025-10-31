@@ -1,8 +1,9 @@
 package main
 
 import (
-	"bishopfox-mcp-prototype/internal/service"
 	"fmt"
+
+	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

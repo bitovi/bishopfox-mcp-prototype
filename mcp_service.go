@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bishopfox-mcp-prototype/internal/service"
-	"bishopfox-mcp-prototype/pkg/bricks"
 	"context"
 	"runtime/debug"
+
+	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
+	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"

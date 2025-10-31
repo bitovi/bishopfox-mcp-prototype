@@ -1,12 +1,13 @@
 package service
 
 import (
-	"bishopfox-mcp-prototype/pkg/bricks"
 	"context"
 	_ "embed"
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
 
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"

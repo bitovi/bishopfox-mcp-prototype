@@ -3,4 +3,5 @@
 __debug_*
 .DS_Store
 .env
+.app.env
 venv

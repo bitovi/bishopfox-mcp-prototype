@@ -1,11 +1,12 @@
 package main
 
 import (
-	"bishopfox-mcp-prototype/internal/service"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+
+	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
 
 	log "github.com/sirupsen/logrus"
 )

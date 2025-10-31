@@ -1,4 +1,4 @@
-module br1
+module github.com/bitovi/bishopfox-mcp-prototype
 
 go 1.24.2
 
