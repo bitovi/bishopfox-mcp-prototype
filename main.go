@@ -35,7 +35,7 @@ func main() {
 		Handler: router,
 	}
 
-	log.Infoln("API server starting")
+	log.Infoln("API server starting on", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Errorf("API server failed: %v", err)
 		return
