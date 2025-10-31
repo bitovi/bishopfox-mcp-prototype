@@ -1,0 +1,27 @@
+Query the assets database with SQL. Only SELECT is allowed. This can be used to get information or statistics about assets and answer questions.
+
+Here is the database definition:
+
+CREATE TABLE assets (
+    id SERIAL PRIMARY KEY, -- Asset ID
+    type TEXT NOT NULL, -- Asset type, one of [domain, service]
+    details JSONB NOT NULL -- JSON data with asset details
+);
+
+For "domain" type, details contains { 
+    "domain": full domain name
+    "registrar": name of registrar
+    "registrant_organization": name of the organization that registered the domain
+    "expiry": unix timestamp of expiration date
+}
+
+For "service" type, details contains {
+    "hostname": host of the service
+    "port": port the service listens on
+    "protocol": e.g., "https"
+    "path": path that the service listens on (scheme, hostname, port, and path build the full base path for the service)
+    "ip_list": list of IP addresses; may be empty for hostname services. if present, the hostname may be empty
+    "cdn_name": CDN name (your guess is as good as mine)
+    "cdn_type": CDN type (your guess is as good as mine)
+    "cpe_list": list of CPEs that the service matches
+}

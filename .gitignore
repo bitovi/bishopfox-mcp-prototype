@@ -1,0 +1,6 @@
+.vscode
+
+__debug_*
+.DS_Store
+.env
+venv
