@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
 	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
@@ -25,6 +26,7 @@ func newAuthenticationMiddleware(svc service.Service) server.ToolHandlerMiddlewa
 			// TODO: Validate authorization.
 
 			orgid := request.Header.Get("X-BF-OrgID")
+			orgid = strings.TrimPrefix("Bearer ", auth)
 			// Note that we should also explore using the _meta field to pass additional context like organization_id.
 			// Claude Desktop doesn't support it.
 

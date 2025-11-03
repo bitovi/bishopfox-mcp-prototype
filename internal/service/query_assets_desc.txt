@@ -3,10 +3,19 @@ Query the assets database with SQL. Only SELECT is allowed. This can be used to 
 Here is the database definition:
 
 CREATE TABLE assets (
-    id SERIAL PRIMARY KEY, -- Asset ID
-    type TEXT NOT NULL, -- Asset type, one of [domain, service]
+    id UUID PRIMARY KEY, -- Asset ID
+    type TEXT NOT NULL, -- Asset type, one of [domain, subdomain, dns_record, ip_address, port, network, service]
+    parent_id UUID, -- Parent Asset ID
+    parent_type, -- Parent asset type, one of [domain, subdomain, dns_record, ip_address, port, network, service]
     details JSONB NOT NULL -- JSON data with asset details
 );
+
+Regarding parents, the assets have these parental hierarchies:
+domain <- subdomain <- service (Hostname class)
+subdomain <- dns_record <- ip_address <- port <- service (IP class)
+network <- ip_address // alternative to dns_record
+
+The 'service' type can have either subdomain or port parent, depending on class
 
 For "domain" type, details contains { 
     "domain": full domain name
@@ -15,13 +24,38 @@ For "domain" type, details contains {
     "expiry": unix timestamp of expiration date
 }
 
+For "subdomain" type, details contains {
+    "hostname": full name of the subdomain
+}
+
+For "dns_record" type, details contains {
+    "record_type": one of [A, AAAA, CNAME, MX, TXT]. May also include other standard record types.
+    "name": dns name
+    "value": dns value
+    "ttl": in seconds
+}
+
+For "ip_address", details contains {
+    "ip": IPv4 or IPv6 formatted address
+    "location": geolocation country info, e.g., "US"
+}
+
+For "port", details contains {
+    "protocol": one of [tcp, udp]
+    "reachable": boolean, indicating if the the internet can connect to it
+    "ip": parent IP address
+}
+
+For "network", details contains {
+    "cidr": cidr string the network includes
+}
+
 For "service" type, details contains {
+    "class": 'hostname' or 'ip'; for 'ip' the hostname is a direct IP address
     "hostname": host of the service
     "port": port the service listens on
-    "protocol": e.g., "https"
-    "path": path that the service listens on (scheme, hostname, port, and path build the full base path for the service)
-    "ip_list": list of IP addresses; may be empty for hostname services. if present, the hostname may be empty
-    "cdn_name": CDN name (your guess is as good as mine)
-    "cdn_type": CDN type (your guess is as good as mine)
+    "protocol": e.g., "https", aka the scheme
+    "path": path that the service listens on, e.g., the path part of a URL, including initial "/"
+    "ip_list": list of IP addresses linked to this service
     "cpe_list": list of CPEs that the service matches
 }

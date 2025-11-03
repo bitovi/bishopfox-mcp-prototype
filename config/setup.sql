@@ -1,11 +1,14 @@
 -- Contains a copy of all asset data.
 CREATE TABLE assets (
     -- Asset ID
-    id SERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY,
     -- Organization ID this asset belongs to.
     org_id UUID NOT NULL,
-    -- Asset type, one of [domain, service]
+    -- Asset type
     type TEXT NOT NULL,
+    -- Parent asset
+    parent_id UUID REFERENCES assets(id),
+    parent_type TEXT,
     -- JSON data with asset details
     details JSONB NOT NULL
 );
