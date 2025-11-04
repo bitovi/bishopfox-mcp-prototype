@@ -11,8 +11,8 @@ CREATE TABLE assets (
 );
 
 Regarding parents, the assets have these parental hierarchies:
-domain <- subdomain <- service (Hostname class)
-subdomain <- dns_record <- ip_address <- port <- service (IP class)
+domain <- subdomain <- service(class:hostname)
+subdomain <- dns_record <- ip_address <- port <- service(class:ip)
 network <- ip_address // alternative to dns_record
 
 The 'service' type can have either subdomain or port parent, depending on class
@@ -52,7 +52,7 @@ For "network", details contains {
 
 For "service" type, details contains {
     "class": 'hostname' or 'ip'; for 'ip' the hostname is a direct IP address
-    "hostname": host of the service
+    "hostname": hostname of the service
     "port": port the service listens on
     "protocol": e.g., "https", aka the scheme
     "path": path that the service listens on, e.g., the path part of a URL, including initial "/"
