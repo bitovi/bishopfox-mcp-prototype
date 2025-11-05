@@ -1,4 +1,4 @@
-Query the assets database with SQL. Only SELECT is allowed. This can be used to get information or statistics about assets and answer questions.
+Query the assets database with SQL. Only SELECT is allowed. This can be used to get information or statistics about assets and answer questions. Only 15 results can be returned from queries, and a LIMIT clause is recommended. If there are more results than that, then the user should be told to be more specific to narrow the results.
 
 Here is the database definition:
 
@@ -7,7 +7,8 @@ CREATE TABLE assets (
     type TEXT NOT NULL, -- Asset type, one of [domain, subdomain, dns_record, ip_address, port, network, service]
     parent_id UUID, -- Parent Asset ID
     parent_type, -- Parent asset type, one of [domain, subdomain, dns_record, ip_address, port, network, service]
-    details JSONB NOT NULL -- JSON data with asset details
+    details JSONB NOT NULL -- Asset details (see below)
+    tags []TEXT NOT NULL, -- List of user-defined tags to categorize
 );
 
 Regarding parents, the assets have these parental hierarchies:
@@ -25,7 +26,8 @@ For "domain" type, details contains {
 }
 
 For "subdomain" type, details contains {
-    "hostname": full name of the subdomain
+    "name": FQDN name of the subdomain (no trailing dot)
+    "dns_records": array of dns records in format "type value", e.g., "AAAA 127.0.0.1"
 }
 
 For "dns_record" type, details contains {
@@ -54,6 +56,7 @@ For "service" type, details contains {
     "class": 'hostname' or 'ip'; for 'ip' the hostname is a direct IP address
     "hostname": hostname of the service
     "port": port the service listens on
+    "reachable": true if the port is open
     "protocol": e.g., "https", aka the scheme
     "path": path that the service listens on, e.g., the path part of a URL, including initial "/"
     "ip_list": list of IP addresses linked to this service

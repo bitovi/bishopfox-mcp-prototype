@@ -145,6 +145,9 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 				return err
 			}
 			results = append(results, str)
+			if len(results) >= 15 {
+				break
+			}
 		}
 
 		fields := rows.FieldDescriptions()
