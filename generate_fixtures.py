@@ -36,7 +36,11 @@ assets = []
 all_names = {}
 domains = {}
 subdomains = {}
+dns_records = {}
+ip_addresses = {}
+ports = {}
 hostname_services = {}
+ip_services = {}
 
 def name_exists(name: str) -> bool:
     return all_names.get(name) is not None
@@ -80,7 +84,7 @@ def add_subdomain(org: str, parent_domain: dict, name: str) -> dict:
     return sd
 
 def add_random_subdomain(org: str) -> dict:
-    parent = random.choice(domains[org])
+    parent = random.choice(list(domains[org].values()))
     name = generate_name() + "." + parent["name"]
     if not use_name(name): return add_random_subdomain(org)
     return add_subdomain(org, parent, name)
@@ -103,7 +107,7 @@ def add_hostname_service(org: str, parent_subdomain: dict, port: str, protocol: 
     return hostname_service
 
 def add_random_hostname_service(org: str) -> dict:
-    parent = random.choice(subdomains[org])
+    parent = random.choice(list(subdomains[org].values()))
     cls = random.randint(0, 100)
     if cls < 50:
         port = 443
@@ -128,27 +132,96 @@ def add_random_hostname_service(org: str) -> dict:
     hs = add_hostname_service(org, parent, port, protocol, path, ips, cpes)
     return hs
 
+def add_dns_record(org: str, parent_subdomain: dict, record_type: str, value: str) -> dict:
+    dns_records[org] = dns_records.get(org, {})
+    id = uuid.uuid4()
+    record = {
+        "id": id,
+        "parent_id": parent_subdomain["id"],
+        "parent_type": "subdomain",
+        "type": record_type,
+        "value": value
+    }
+    dns_records[org][id] = record
+    return record
 
+def add_random_ip_address(org: str, subdomain: dict) -> dict:
+    parent = subdomain
+    ip_addresses[org] = ip_addresses.get(org, {})
+    id = uuid.uuid4()
+    ip = f"{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(0,255)}"
+    if not use_name(ip):
+        return add_random_ip_address(org)
+    dns_record = add_dns_record(org, parent, "A", ip)
+    ip_address = {
+        "id": id,
+        "ip": ip,
+        "location": "US",
+        "parent_id": dns_record["id"],
+        "parent_type": "dns_record"
+    }
+    ip_addresses[org][id] = ip_address
+    return ip_address
+
+def add_ip_service(org: str, parent_ip: dict, protocol: str, port: int, reachable: bool) -> dict:
+    id = uuid.uuid4()
+    port = add_port(org, parent_ip, port, reachable)
+    ip_service = {
+        "id": id,
+        "parent_id": parent_ip["id"],
+        "parent_type": "ip_address",
+        "protocol": protocol,
+        "port": port,
+        "reachable": reachable
+    }
+    return ip_service
+
+def add_port(org: str, parent_ip: dict, port: int, reachable: bool) -> dict:
+    ports[org] = ports.get(org, {})
+    id = uuid.uuid4()
+    port_asset = {
+        "id": id,
+        "parent_id": parent_ip["id"],
+        "parent_type": "ip_address",
+        "port": port,
+        "reachable": reachable
+    }
+    ports[org][id] = port_asset
+    return port_asset
+
+def add_random_ip_service(org: str) -> dict:
+    parent = random.choice(list(ip_addresses[org].values()))
+    protocol = random.choice(["tcp", "udp"])
+    port_num = random.randint(1, 65535)
+    reachable = random.choice([True, False])
+    if not use_name(f"{parent['ip']}:{port_num}/{protocol}"):
+        return add_random_ip_service(org)
+    ip_service = add_ip_service(org, parent, protocol, port_num, reachable)
+    ip_services[org] = ip_services.get(org, {})
+    ip_services[org][ip_service["id"]] = ip_service
+    return ip_service
 
 for org in orgs:
     # generate domains
     domains[org] = domains.get(org, [])
-    for i in range(0, 25):
+    for i in range(25):
         add_random_domain(org)
         
     # generate subdomains
-    for i in range(0, 200):
+    for i in range(200):
         add_random_subdomain(org)
 
     # generate hostname services
-    for i in range(0, 200):
+    for i in range(200):
         add_random_hostname_service(org)
 
-    for i in range(
+    for i in subdomains[org].values():
+        add_random_ip_address(org, i)
 
+    for i in range(200):
+        add_random_ip_service(org)
 
-
-    for i in range(0, 200):
+    for i in range(200):
         parent = random.choice(domains[org])
         ips = []
         for j in range(0, random.randint(1,3)):
@@ -168,7 +241,7 @@ for org in orgs:
         all_names[details["hostname"]] = True
         assets.append((id, org, "service", parent[0], "subdomain", json.dumps(details)))
 
-# for i in range(0, 500):
+# for i in range(500):
 #     org_id = random.choice(orgs)
 #     asset_type = random.choice(asset_types)
 #     asset_name = f"Asset_{i}_{asset_type}"

@@ -1,12 +1,12 @@
-Query the assets database with SQL. Only SELECT is allowed. This can be used to get information or statistics about assets and answer questions. Only 15 results can be returned from queries, and a LIMIT clause is recommended. If there are more results than that, then the user should be told to be more specific to narrow the results.
+Query the assets database with SQL. Only SELECT is allowed. This can be used to get information or statistics about assets and answer questions. Only 15 results can be returned from queries (use LIMIT 16 and you will receive max 15 results with info if the resultset was truncated). If there are more results than that, then the user should be told to be more specific to narrow the results.
 
 Here is the database definition:
 
 CREATE TABLE assets (
     id UUID PRIMARY KEY, -- Asset ID
     type TEXT NOT NULL, -- Asset type, one of [domain, subdomain, dns_record, ip_address, port, network, service]
-    parent_id UUID, -- Parent Asset ID
-    parent_type, -- Parent asset type, one of [domain, subdomain, dns_record, ip_address, port, network, service]
+    parent_id UUID REFERENCES assets(id), -- Parent Asset ID
+    parent_type TEXT, -- Parent asset type, one of [domain, subdomain, dns_record, ip_address, port, network, service]
     details JSONB NOT NULL -- Asset details (see below)
     tags []TEXT NOT NULL, -- List of user-defined tags to categorize
 );
@@ -44,7 +44,7 @@ For "ip_address", details contains {
 
 For "port", details contains {
     "protocol": one of [tcp, udp]
-    "reachable": boolean, indicating if the the internet can connect to it
+    "reachable": boolean, indicating if the internet can connect to it
     "ip": parent IP address
 }
 
