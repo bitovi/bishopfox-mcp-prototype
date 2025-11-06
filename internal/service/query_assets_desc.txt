@@ -20,14 +20,12 @@ The 'service' type can have either subdomain or port parent, depending on class
 
 For "domain" type, details contains { 
     "domain": full domain name
-    "registrar": name of registrar
-    "registrant_organization": name of the organization that registered the domain
+    "registrar": name of registrar, e.g., "AWS Route 53", "Namecheap"
     "expiry": unix timestamp of expiration date
 }
 
 For "subdomain" type, details contains {
     "name": FQDN name of the subdomain (no trailing dot)
-    "dns_records": array of dns records in format "type value", e.g., "AAAA 127.0.0.1"
 }
 
 For "dns_record" type, details contains {
@@ -56,7 +54,6 @@ For "service" type, details contains {
     "class": 'hostname' or 'ip'; for 'ip' the hostname is a direct IP address
     "hostname": hostname of the service
     "port": port the service listens on
-    "reachable": true if the port is open
     "protocol": e.g., "https", aka the scheme
     "path": path that the service listens on, e.g., the path part of a URL, including initial "/"
     "ip_list": list of IP addresses linked to this service

@@ -5,3 +5,4 @@ __debug_*
 .env
 .app.env
 venv
+config/2.fixtures.sql
