@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"runtime/debug"
+	"strings"
 
 	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
 	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
@@ -25,6 +26,7 @@ func newAuthenticationMiddleware(svc service.Service) server.ToolHandlerMiddlewa
 			// TODO: Validate authorization.
 
 			orgid := request.Header.Get("X-BF-OrgID")
+			orgid = strings.TrimPrefix("Bearer ", auth)
 			// Note that we should also explore using the _meta field to pass additional context like organization_id.
 			// Claude Desktop doesn't support it.
 
@@ -55,7 +57,7 @@ func mcpRecovery(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 func runMCPServer(svc service.Service) {
 	// Create a new MCP server
 	serverBase := server.NewMCPServer(
-		"Calculator Demo",
+		"Bishop Fox MCP Prototype",
 		"1.0.0",
 		server.WithToolCapabilities(false),
 		server.WithRecovery(),
@@ -71,7 +73,9 @@ func runMCPServer(svc service.Service) {
 
 	httpServer := server.NewStreamableHTTPServer(
 		serverBase,
+		server.WithStateLess(true),
 		server.WithEndpointPath("/mcp"),
+		server.WithDisableStreaming(true),
 	)
 
 	mcpPort := os.Getenv("MCP_PORT")

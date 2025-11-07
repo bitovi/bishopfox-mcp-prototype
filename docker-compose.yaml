@@ -10,9 +10,9 @@ services:
     ports:
       - "5434:5432"
     volumes:
-      - ./config/setup.sql:/docker-entrypoint-initdb.d/setup.sql
+      - ./config/:/docker-entrypoint-initdb.d/
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d mydb && psql -U postgres -d mydb -c 'SELECT COUNT(*) FROM assets;' > /dev/null"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d mydb && psql -U postgres -d mydb -c 'SELECT COUNT(*) FROM assets_org_111111111111;' > /dev/null"]
       interval: 10s
       timeout: 5s
       retries: 5

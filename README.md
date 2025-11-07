@@ -2,12 +2,14 @@
 
 This is a prototype to demonstrate tool implementation via MCP and Bedrock RETURN_CONTROL.
 
-config/setup.sql contains the database schema including test data from generate_fixtures.py.
+config/setup.sql contains the database schema.
 
 ## Running the Prototype in a container
 
 Create `.app.env` according to `.app.env.example`. It needs to be configured with AWS
 secrets to access the Bedrock API.
+
+Run `./generate_fixtures.py` to generate fixture data in `config/2.fixtures.sql`.
 
 Run `docker compose up` to start the app.
 

@@ -35,8 +35,11 @@ type MainService struct {
 	functions *bricks.FunctionSet
 }
 
-//go:embed query_assets_desc.txt
+//go:embed prompt/query_assets_desc.txt
 var queryAssetsDesc string
+
+//go:embed prompt/agent_instruction.txt
+var agentInstruction string
 
 var ErrSelfCheckFailed = errors.New("self check failed")
 
@@ -57,7 +60,7 @@ func CreateMainService() (Service, error) {
 
 	agent := bricks.NewBedrockAgent(bricks.BedrockAgentConfig{
 		Model:       "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-		Instruction: "You are a helpful assistant for Bishop Fox.",
+		Instruction: agentInstruction,
 		AgentName:   "Voyager",
 		Functions:   fs,
 	})
