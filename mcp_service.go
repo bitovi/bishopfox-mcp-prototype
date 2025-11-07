@@ -57,7 +57,7 @@ func mcpRecovery(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 func runMCPServer(svc service.Service) {
 	// Create a new MCP server
 	serverBase := server.NewMCPServer(
-		"Calculator Demo",
+		"Bishop Fox MCP Prototype",
 		"1.0.0",
 		server.WithToolCapabilities(false),
 		server.WithRecovery(),
@@ -73,7 +73,9 @@ func runMCPServer(svc service.Service) {
 
 	httpServer := server.NewStreamableHTTPServer(
 		serverBase,
+		server.WithStateLess(true),
 		server.WithEndpointPath("/mcp"),
+		server.WithDisableStreaming(true),
 	)
 
 	mcpPort := os.Getenv("MCP_PORT")

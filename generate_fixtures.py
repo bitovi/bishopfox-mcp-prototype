@@ -183,8 +183,9 @@ def add_random_ip_address(org: str, subdomain: dict) -> dict:
 
 def add_port(org: str, parent_ip: dict, port: int, reachable: bool) -> dict:
     ports[org] = ports.get(org, {})
+    id = make_uuid()
     port_asset = {
-        "id": make_uuid(),
+        "id": id,
         "parent_id": parent_ip["id"],
         "parent_type": "ip_address",
         "protocol": "tcp",
@@ -198,8 +199,9 @@ def add_port(org: str, parent_ip: dict, port: int, reachable: bool) -> dict:
 def add_ip_service(org: str, parent_ip: dict, protocol: str, port: int, reachable: bool) -> dict:
     port = add_port(org, parent_ip, port, reachable)
     ip_services[org] = ip_services.get(org, {})
+    id = make_uuid()
     ip_service = {
-        "id": make_uuid(),
+        "id": id,
         "parent_id": parent_ip["id"],
         "parent_type": "ip_address",
         "hostname": parent_ip["ip"],
@@ -302,26 +304,40 @@ with open("config/2.fixtures.sql", "w") as f:
             return "NULL"
         return f"'{value}'"
 
-    def write_asset(org: str, asset: dict, asset_type: str):
+    def write_asset(content: list, org: str, asset: dict, asset_type: str):
         details = {key: value for key, value in asset.items() if key not in std_keys}
-        f.write(f"INSERT INTO assets (id, org_id, type, parent_id, parent_type, details) VALUES ('{asset['id']}', '{org}', '{asset_type}', {quote_or_null(asset.get('parent_id'))}, {quote_or_null(asset.get('parent_type'))}, '{json.dumps(details)}');\n")
+        tags = ["'" + tag + "'" for tag in asset.get("tags", [])]
+        tags = ",".join(tags)
+        content.append(f"    ('{asset['id']}', '{org}', '{asset_type}', {quote_or_null(asset.get('parent_id'))}, {quote_or_null(asset.get('parent_type'))}, '{json.dumps(details)}', ARRAY[{tags}]::TEXT[])")
 
     for org in domains.keys():
         f.write("-- assets for org " + org + " --\n")
+        f.write(f"INSERT INTO assets (id, org_id, type, parent_id, parent_type, details, tags) VALUES\n")
+
+        print("counts for org", org)
+        print("  domains:", len(domains[org]))
+        print("  subdomains:", len(subdomains[org]))
+        print("  dns_records:", len(dns_records[org]))
+        print("  ip_addresses:", len(ip_addresses[org]))
+        print("  ports:", len(ports[org]))
+        print("  hostname_services:", len(hostname_services[org]))
+        print("  ip_services:", len(ip_services[org]))
+        content = []
         for domain in domains[org].values():
-            write_asset(org, domain, "domain")
+            write_asset(content, org, domain, "domain")
         for subdomain in subdomains[org].values():
-            write_asset(org, subdomain, "subdomain")
+            write_asset(content, org, subdomain, "subdomain")
         for record in dns_records[org].values():
-            write_asset(org, record, "dns_record")
+            write_asset(content, org, record, "dns_record")
         for ip in ip_addresses[org].values():
-            write_asset(org, ip, "ip_address")
+            write_asset(content, org, ip, "ip_address")
         for port in ports[org].values():
-            write_asset(org, port, "port")
+            write_asset(content, org, port, "port")
         for hs in hostname_services[org].values():
-            write_asset(org, hs, "hostname_service")
+            write_asset(content, org, hs, "service")
         for ips in ip_services[org].values():
-            write_asset(org, ips, "ip_service")
+            write_asset(content, org, ips, "service")
+        f.write(",\n".join(content) + ";\n\n")
 
     #for asset in assets:
     #    f.write(f"INSERT INTO assets (id, org_id, type, parent_id, parent_type, details) VALUES ('{asset[0]}', '{asset[1]}', '{asset[2]}', {asset[3] and f"'{asset[3]}'" or 'NULL'}, {asset[4] and f"'{asset[4]}'" or 'NULL'}, '{asset[5]}');\n")

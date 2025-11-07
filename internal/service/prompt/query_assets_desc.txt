@@ -1,0 +1,1 @@
+Query the assets database with SQL. Only SELECT is allowed. This can be used to get information or statistics about assets and answer questions.

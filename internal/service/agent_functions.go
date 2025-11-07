@@ -76,7 +76,11 @@ func pgRowToString(rows pgx.Rows) (string, error) {
 
 		switch fields[i].DataTypeOID {
 		case pgtype.UUIDOID:
-			valueString = uuid.UUID(v.([16]byte)).String()
+			if v == nil {
+				valueString = ""
+			} else {
+				valueString = uuid.UUID(v.([16]byte)).String()
+			}
 		case pgtype.TextArrayOID, pgtype.VarcharArrayOID:
 			// This column is a []string array
 			arrayValues := []string{}
@@ -94,6 +98,13 @@ func pgRowToString(rows pgx.Rows) (string, error) {
 
 	return strings.Join(rowStrings, "|"), nil
 }
+
+func getOrgHash(orgID uuid.UUID) string {
+	// Simple hash function: take the last 12 characters of the UUID
+	return orgID.String()[len(orgID.String())-12:]
+}
+
+var errQueryFailed = errors.New("query failed")
 
 // Handler for query_assets. Queries the asset database with a given SQL query and returns
 // the result. Enforces row security so that the query can only access the rows for the
@@ -118,27 +129,31 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 
 	var output string
 
+	role_suffix := getOrgHash(qc.OrgID)
+
 	err = pgx.BeginFunc(c, conn, func(tx pgx.Tx) error {
 		_, err := tx.Exec(c, `
-			
-			SET LOCAL app.org_id = '`+qc.OrgID.String()+`';
-			SET LOCAL ROLE customer_query_role;
+			SET LOCAL ROLE customer_query_role_`+role_suffix+`;
 		`)
 		if err != nil {
 			return fmt.Errorf("failed to set org_id; %w", err)
 		}
 
-		rows, err := tx.Query(c, req.Query)
+		query := req.Query
+		query = strings.ReplaceAll(query, "tbl_assets", "assets_org_"+role_suffix)
+
+		rows, err := tx.Query(c, query)
 		if err != nil {
-			return fmt.Errorf("query execution failed; %w", err)
+			return fmt.Errorf("%w; %w", errQueryFailed, err)
 		}
 		defer rows.Close()
 
 		var results []string
+		resultsTruncated := false
 		for rows.Next() {
 			err := rows.Err()
 			if err != nil {
-				return fmt.Errorf("query execution failed; %w", err)
+				return fmt.Errorf("query failed: %w", err)
 			}
 			str, err := pgRowToString(rows)
 			if err != nil {
@@ -146,6 +161,7 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 			}
 			results = append(results, str)
 			if len(results) >= 15 {
+				resultsTruncated = true
 				break
 			}
 		}
@@ -156,14 +172,26 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 			header = append(header, f.Name)
 		}
 		output += strings.Join(header, "|") + "\n"
+		if len(results) == 0 {
+			output += "-- No results --"
+			return nil
+		}
 		output += strings.Join(results, "\n")
+		if resultsTruncated {
+			output += "\n-- Result set truncated; more than 15 rows returned --"
+		}
 
 		return nil
 	})
 
 	if err != nil {
+		if errors.Is(err, errQueryFailed) {
+			log.Debugln("query failed:", err)
+			return "The query failed to execute with this error:\n" + err.Error(), nil
+		}
 		return nil, fmt.Errorf("db query failed; %w", err)
 	}
 
+	log.Debugln("query output:\n", output)
 	return output, nil
 }

@@ -11,6 +11,7 @@ CREATE TABLE assets (
     parent_type TEXT,
     -- JSON data with asset details
     details JSONB NOT NULL,
+    tags TEXT[] NOT NULL,
     PRIMARY KEY (org_id, id)
 ) PARTITION BY LIST (org_id);
 
