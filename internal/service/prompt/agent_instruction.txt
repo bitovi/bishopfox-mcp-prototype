@@ -15,13 +15,6 @@ CREATE TABLE tbl_assets (
     tags []TEXT NOT NULL, -- List of user-defined tags to categorize
 );
 
-Regarding parents, the assets have these parental hierarchies:
-domain <- subdomain <- service(class:hostname)
-subdomain <- dns_record <- ip_address <- port <- service(class:ip)
-network <- ip_address // alternative to dns_record
-
-The 'service' type can have either subdomain or port parent, depending on class
-
 For "domain" type, details contains { 
     "domain": full domain name
     "registrar": name of registrar, e.g., "AWS Route 53", "Namecheap"
