@@ -8,5 +8,5 @@ import (
 var ErrInvalidArg = fmt.Errorf("invalid argument")
 
 type Agent interface {
-	Query(ctx context.Context, inputText string) (string, error)
+	Query(ctx context.Context, inputText string, sessionID string) (string, error)
 }

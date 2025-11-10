@@ -21,6 +21,10 @@ HTTP endpoints:
 - `POST /ask?organization_id=<orgid>` 
   - Body: {query: "question to ask"}
 
+## Querier Client
+
+Goto cmd/querier and do `go run .` to run a the vibecoded demo CLI.
+
 ## Additional notes
 
 If running outside of the container, use the `.env` file. VSCode configurations can be set

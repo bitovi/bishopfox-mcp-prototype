@@ -22,9 +22,14 @@ type QueryContext struct {
 	Authorization string
 }
 
+type AskResult struct {
+	Response  string `json:"response"`
+	SessionID string `json:"session_id"`
+}
+
 // Service interface for consumers.
 type Service interface {
-	Ask(ctx context.Context, query string, orgID uuid.UUID, authorization string) (string, error)
+	Ask(ctx context.Context, query string, orgID uuid.UUID, authorization string, sessionID string) (AskResult, error)
 	WrapContextForQuery(ctx context.Context, orgID uuid.UUID, authorization string) context.Context
 	GetFunctions() *bricks.FunctionSet
 }
@@ -79,10 +84,22 @@ func CreateMainService() (Service, error) {
 // Ask a question. The authorization string is the user's token to be forwarded to API
 // requests if necessary.
 func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
-	authorization string) (string, error) {
+	authorization string, sessionID string) (AskResult, error) {
 	log.WithField("org", orgID).Debug("processing ask:", query)
 
-	return s.Agent.Query(s.WrapContextForQuery(ctx, orgID, authorization), query)
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+	}
+
+	response, err := s.Agent.Query(s.WrapContextForQuery(ctx, orgID, authorization), query, sessionID)
+	if err != nil {
+		return AskResult{}, err
+	}
+
+	return AskResult{
+		Response:  response,
+		SessionID: sessionID,
+	}, nil
 }
 
 // Wrap a given context for an agent query, adding authorization information. This context
