@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -74,13 +75,17 @@ func pgRowToString(rows pgx.Rows) (string, error) {
 	for i, v := range values {
 		var valueString string
 
+		if v == nil {
+			rowStrings = append(rowStrings, "")
+			continue
+		}
+
 		switch fields[i].DataTypeOID {
+		case pgtype.JSONBOID:
+			jsonBytes, _ := json.Marshal(v)
+			valueString = string(jsonBytes)
 		case pgtype.UUIDOID:
-			if v == nil {
-				valueString = ""
-			} else {
-				valueString = uuid.UUID(v.([16]byte)).String()
-			}
+			valueString = uuid.UUID(v.([16]byte)).String()
 		case pgtype.TextArrayOID, pgtype.VarcharArrayOID:
 			// This column is a []string array
 			arrayValues := []string{}
@@ -164,6 +169,10 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 				resultsTruncated = true
 				break
 			}
+		}
+		err = rows.Err()
+		if err != nil {
+			return fmt.Errorf("query failed: %w", err)
 		}
 
 		fields := rows.FieldDescriptions()

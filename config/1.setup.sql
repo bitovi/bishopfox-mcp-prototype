@@ -12,6 +12,15 @@ CREATE TABLE assets (
     -- JSON data with asset details
     details JSONB NOT NULL,
     tags TEXT[] NOT NULL,
+    link TEXT GENERATED ALWAYS AS (
+        CASE 
+            WHEN type = 'domain' THEN 'https://ui.api.non.usea2.bf9.io/' || org_id || '/assets/domains/' || (details->>'name')
+            WHEN type = 'subdomain' THEN 'https://ui.api.non.usea2.bf9.io/' || org_id || '/assets/subdomains/' || (details->>'name')
+            WHEN type = 'ip' THEN 'https://ui.api.non.usea2.bf9.io/' || org_id || '/assets/ips/' || (details->>'ip')
+            WHEN type = 'service' THEN 'https://ui.api.non.usea2.bf9.io/' || org_id || '/assets/services/' || id
+            ELSE NULL
+        END
+    ) STORED,
     PRIMARY KEY (org_id, id)
 ) PARTITION BY LIST (org_id);
 

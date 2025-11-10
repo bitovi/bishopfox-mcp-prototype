@@ -16,6 +16,9 @@ var ErrInvalidArg = fmt.Errorf("invalid argument")
 func main() {
 	log.SetLevel(log.DebugLevel)
 	log.Infoln("Starting test service")
+	log.SetFormatter(&log.TextFormatter{
+		ForceColors: true,
+	})
 
 	svc, err := service.CreateMainService()
 	if err != nil {

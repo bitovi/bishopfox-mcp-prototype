@@ -15,13 +15,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// func getHTTPRequestFromContext(ctx context.Context) *http.Request {
-// 	if req, ok := ctx.Value(http.RequestContextKey).(*http.Request); ok {
-// 		return req
-// 	}
-// 	return nil
-// }
-
 func newAuthenticationMiddleware(svc service.Service) server.ToolHandlerMiddleware {
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -40,8 +33,10 @@ func newAuthenticationMiddleware(svc service.Service) server.ToolHandlerMiddlewa
 			if err != nil {
 				return mcp.NewToolResultError("invalid organization_id param"), nil
 			}
-			// Note that we should also explore using the _meta field to pass additional context like organization_id.
-			// Claude Desktop doesn't support it.
+			// There is also the _meta field that can pass information like the
+			// organization ID, but that is something less accessible to existing tools.
+			// For example, there is no configuration for Claude Desktop for specifying
+			// _meta fields.
 
 			// TODO: If empty, pull from auth token.
 			// TODO: Validate access to org.
@@ -69,6 +64,9 @@ func mcpRecovery(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 
 type orgIDContextKey struct{}
 
+// This middleware is executed at the server level to capture the organization_id from the
+// query param and add it to the current context. Naturally, this is only relevant to HTTP
+// transports. For Stdio, we would want to use a commandline parameter or env variable.
 func addHTTPContext(ctx context.Context, r *http.Request) context.Context {
 	orgID := r.URL.Query().Get("organization_id")
 	return context.WithValue(ctx, orgIDContextKey{}, orgID)

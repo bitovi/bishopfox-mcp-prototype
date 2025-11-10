@@ -65,12 +65,14 @@ def make_uuid() -> str:
 def add_domain(org: str, name: str, expires: int) -> dict:
     domains[org] = domains.get(org, {})
     id = make_uuid()
+    expiry_time = int(time.time()) + expires * 86400
     domain = {
         "id": id,
         "name": name,
         "registrar": random.choice(regs),
-        "registrant_organization": org_names[org],
-        "expiry": int(time.time()) + expires * 86400,
+        #"registrant_organization": org_names[org],
+        "expiry": expiry_time,
+        "expiry_text": time.strftime("%Y-%m-%d", time.gmtime(expiry_time)),
         "tags": make_tags(),
     }
     domains[org][id] = domain
