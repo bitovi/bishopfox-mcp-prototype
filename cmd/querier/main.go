@@ -67,7 +67,8 @@ type Request struct {
 }
 
 type Response struct {
-	Data string `json:"data"`
+	Data string   `json:"data"`
+	Refs []string `json:"refs"`
 }
 
 type responseMsg struct {
@@ -311,7 +312,16 @@ func (m model) makeRequest(query string) tea.Cmd {
 			return responseMsg{err: fmt.Errorf("parsing response: %v", err)}
 		}
 
-		return responseMsg{response: response.Data}
+		responseText := strings.TrimSpace(response.Data)
+		responseText = strings.ReplaceAll(responseText, "\\n", "\n")
+		if len(response.Refs) > 0 {
+			responseText = fmt.Sprintf("%s\n\nRead More:\n• %s",
+				responseText,
+				strings.Join(response.Refs, "\n• "),
+			)
+		}
+
+		return responseMsg{response: responseText}
 	}
 }
 

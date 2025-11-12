@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 func setupRouter(svc service.Service) *gin.Engine {
@@ -48,9 +49,12 @@ func AskHandler(svc service.Service) gin.HandlerFunc {
 			return
 		}
 
+		log.Debugln("/ask response:", response)
+
 		c.JSON(200, gin.H{
 			"session_id": response.SessionID,
 			"data":       response.Response,
+			"refs":       response.Refs,
 		})
 	}
 }
