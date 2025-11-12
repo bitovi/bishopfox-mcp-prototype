@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime/types"
-	"github.com/google/uuid"
 )
 
 type BedrockInvokeInput = types.FunctionInvocationInput
@@ -138,45 +137,88 @@ func (ba *BedrockAgent) invokeFunction(ctx context.Context, input BedrockInvokeI
 	return out, nil
 }
 
-// Query the Bedrock Agent with the given prompt and return the response.
-func (ba *BedrockAgent) Query(ctx context.Context, prompt string) (string, error) {
-
-	client := getBedrockAgentRuntime()
-	sessionId := uuid.New().String()
-
+func (ba *BedrockAgent) makeBaseInput(sessionID string) bedrockagentruntime.InvokeInlineAgentInput {
 	input := bedrockagentruntime.InvokeInlineAgentInput{
-		SessionId:       aws.String(sessionId),
+		SessionId:       aws.String(sessionID),
 		FoundationModel: aws.String(ba.Config.Model),
 		Instruction:     aws.String(ba.Config.Instruction),
 		AgentName:       aws.String(ba.Config.AgentName),
-		InputText:       aws.String(prompt),
-	}
 
+		// TODO: Hardcoded test
+		KnowledgeBases: []types.KnowledgeBase{
+			{
+				Description:     aws.String("Contains documentation on the Cosmos platform, helpful for resolving user queries about platform functionality"),
+				KnowledgeBaseId: aws.String("CETGU0P5D7"),
+			},
+		},
+	}
 	if ba.Config.Functions != nil {
 		input.ActionGroups = ba.Config.Functions.GetActionGroups()
 	}
+	return input
+}
 
+// Query the Bedrock Agent with the given prompt and return the response.
+func (ba *BedrockAgent) Query(ctx context.Context, inputText string, sessionID string) (QueryResult, error) {
+
+	client := getBedrockAgentRuntime()
+
+	input := ba.makeBaseInput(sessionID)
+	input.InputText = aws.String(inputText)
+
+	// Invoke the agent with the input text.
 	result, err := client.InvokeInlineAgent(ctx, &input)
 	if err != nil {
-		return "", fmt.Errorf("failed to invoke agent: %w", err)
+		return QueryResult{}, fmt.Errorf("failed to invoke agent: %w", err)
 	}
 
 	var chunks []string
+	refs := []Reference{}
+	used_refs := make(map[string]bool)
 
 	agentResponse := result.GetStream()
 	for {
 		ev, ok := <-agentResponse.Events()
 		if !ok {
 			if agentResponse.Err() != nil {
-				return "", fmt.Errorf("error receiving agent response: %w", agentResponse.Err())
+				return QueryResult{}, fmt.Errorf("error receiving agent response: %w", agentResponse.Err())
 			}
 			break
 		}
 
 		switch v := ev.(type) {
 		case *types.InlineAgentResponseStreamMemberChunk:
+			// Record output chunks.
 			chunks = append(chunks, string(v.Value.Bytes))
+			if v.Value.Attribution != nil {
+				for _, citation := range v.Value.Attribution.Citations {
+
+					for _, ref := range citation.RetrievedReferences {
+						meta := make(map[string]string)
+						for k, val := range ref.Metadata {
+							var text string
+							_ = val.UnmarshalSmithyDocument(&text)
+							meta[k] = string(text)
+						}
+
+						// dedup refs, in case multiple chunks are used from same source
+						refKey := fmt.Sprintf("%s/%s",
+							meta["x-amz-bedrock-kb-data-source-id"],
+							meta["x-amz-bedrock-kb-source-uri"])
+						if used_refs[refKey] {
+							continue
+						}
+						used_refs[refKey] = true
+
+						refs = append(refs, Reference{
+							Type: "knowledgebase",
+							Data: meta,
+						})
+					}
+				}
+			}
 		case *types.InlineAgentResponseStreamMemberReturnControl:
+			// If we get RETURN_CONTROL, call our functions and the invoke the agent again.
 			var results []types.InvocationResultMember
 			for _, rawInv := range v.Value.InvocationInputs {
 				switch inv := rawInv.(type) {
@@ -194,21 +236,25 @@ func (ba *BedrockAgent) Query(ctx context.Context, prompt string) (string, error
 				}
 			}
 
+			input := ba.makeBaseInput(sessionID)
 			input.InlineSessionState = &types.InlineSessionState{
 				InvocationId:                   v.Value.InvocationId,
 				ReturnControlInvocationResults: results,
 			}
+			// We could also include this as a reference.
 			result, err := client.InvokeInlineAgent(context.TODO(), &input)
 			if err != nil {
-				return "", fmt.Errorf(
+				return QueryResult{}, fmt.Errorf(
 					"failed to invoke inline agent for return control: %v", err)
 			}
 			agentResponse = result.GetStream()
 		default:
-
 			fmt.Printf("Unexpected event type: %T\n", v)
 		}
 	}
 
-	return strings.Join(chunks, ""), nil
+	return QueryResult{
+		Response: strings.Join(chunks, ""),
+		Refs:     refs,
+	}, nil
 }

@@ -204,3 +204,43 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 	log.Debugln("query output:\n", output)
 	return output, nil
 }
+
+// Input schema for querying assets with SQL. Output is a text string.
+type DescribeAssetRequest struct {
+	AssetID string `json:"asset_id" desc:"ID of the asset to describe" required:"true"`
+}
+
+/*
+func (svc *MainService) DescribeAssetsFunction(c bricks.FunctionContext) (any, error) {
+	var req DescribeAssetRequest
+	c.MustBind(&req)
+
+	qc, ok := c.Value(QueryContextKey{}).(QueryContext)
+	if !ok {
+		return nil, ErrMissingContext
+	}
+	log.Debugf("--- Received describe asset request ---\n%s\n---", req.AssetID)
+
+	connUrl := svc.getDBUrl()
+	conn, err := pgx.Connect(c, connUrl)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close(c)
+
+	var assetType, parentID, parentType, details, link string
+	var tags []string
+	err = conn.QueryRow(c, `
+		SELECT type, parent_id, parent_type, details, tags, link
+		FROM assets_org_`+getOrgHash(qc.OrgID)+`
+		WHERE id = $1
+	`, req.AssetID).Scan(&assetType, &parentID, &parentType, &details, &tags, &link)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "No asset found with the ID " + req.AssetID, nil
+		}
+		return nil, fmt.Errorf("db query failed; %w", err)
+	}
+
+}
+*/

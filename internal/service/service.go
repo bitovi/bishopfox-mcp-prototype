@@ -5,7 +5,9 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
 
@@ -22,9 +24,20 @@ type QueryContext struct {
 	Authorization string
 }
 
+type Reference struct {
+	Type string `json:"type"`
+	Ref  string `json:"ref"`
+}
+
+type AskResult struct {
+	Response  string   `json:"response"`
+	Refs      []string `json:"refs"`
+	SessionID string   `json:"session_id"`
+}
+
 // Service interface for consumers.
 type Service interface {
-	Ask(ctx context.Context, query string, orgID uuid.UUID, authorization string) (string, error)
+	Ask(ctx context.Context, query string, orgID uuid.UUID, authorization string, sessionID string) (AskResult, error)
 	WrapContextForQuery(ctx context.Context, orgID uuid.UUID, authorization string) context.Context
 	GetFunctions() *bricks.FunctionSet
 }
@@ -76,13 +89,64 @@ func CreateMainService() (Service, error) {
 	return svc, nil
 }
 
+func formatRefTitle(header string) string {
+	title := strings.TrimLeft(header, "#")
+	title = strings.TrimSpace(title)
+
+	return title
+}
+
+// This needs to match the UI formatting code. It might not currently.
+func formatRefHeader(header string) string {
+	// Lowercase the header
+	header = strings.ToLower(header)
+	header = strings.ReplaceAll(header, " ", "-")
+
+	// URL encode the header to make it safe for use in URLs
+	return url.QueryEscape(header)
+}
+
 // Ask a question. The authorization string is the user's token to be forwarded to API
 // requests if necessary.
 func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
-	authorization string) (string, error) {
+	authorization string, sessionID string) (AskResult, error) {
 	log.WithField("org", orgID).Debug("processing ask:", query)
 
-	return s.Agent.Query(s.WrapContextForQuery(ctx, orgID, authorization), query)
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+	}
+
+	response, err := s.Agent.Query(s.WrapContextForQuery(ctx, orgID, authorization), query, sessionID)
+	if err != nil {
+		return AskResult{}, err
+	}
+
+	// Translate refs to urls
+	var refURLs []string
+	baseUrl := "https://ui.api.non.usea2.bf9.io"
+	for _, ref := range response.Refs {
+		// For now, only handling knowledge base refs
+		if ref.Type == "knowledgebase" {
+			header := ref.Data["header"]
+			folder := ref.Data["folder"]
+			if header == "" || folder == "" {
+				continue
+			}
+			url := fmt.Sprintf("%s - %s/%s/documentation/%s#%s",
+				formatRefTitle(header),
+				baseUrl,
+				orgID.String(),
+				folder,
+				formatRefHeader(header))
+			refURLs = append(refURLs, url)
+		}
+	}
+
+	return AskResult{
+		Response:  response.Response,
+		Refs:      refURLs,
+		SessionID: sessionID,
+	}, nil
 }
 
 // Wrap a given context for an agent query, adding authorization information. This context
