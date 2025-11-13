@@ -318,3 +318,80 @@ func (svc *MainService) GetAssetsOverviewLinkFunction(c bricks.FunctionContext) 
 	fullURL.RawQuery = params.Encode()
 	return fullURL.String(), nil
 }
+
+type GetLatestEmergingThreatsRequest struct{}
+
+func (svc *MainService) GetLatestEmergingThreatsFunction(c bricks.FunctionContext) (any, error) {
+	// No input parameters
+	_ = GetLatestEmergingThreatsRequest{}
+
+	// For demonstration, returning a static list of threats
+
+	return `Here is information about the 5 latest emerging threats:
+<threat>
+cpe: n/a
+cve: CVE-2025-59118
+cvss_score: 0
+cwe: n/a
+identified_at: 2025-11-12T22:07:31.62Z
+investigation_status: in-progress
+products_affected: Apache OFBiz
+id: et-00171
+technology: Apache Software Foundation
+tier: 2
+title: Apache OFBiz: Critical Remote Command Execution via Unrestricted File Upload
+</threat>
+<threat>
+  cpe: n/a
+  cve: CVE-2025-12480
+  cvss_score: 0
+  cwe: n/a
+  identified_at: 2025-11-12T00:00:00Z
+  investigation_status: complete
+  products_affected: TrioFox
+  id: et-00170
+  technology: TrioFox
+  tier: 3
+  title: Glaidnet Triofox Improper Access Control
+</threat>
+<threat>
+cpe: cpe:2.3:a:wpexperts:post_smtp:-:*:*:*:*:wordpress:*:*
+cve: CVE-2025-11833
+cvss_score: 9.8
+cwe: CWE-862
+identified_at: 2025-11-04T00:00:00Z
+investigation_status: in-progress
+products_affected: Post SMTP Plugin
+id: et-00169
+technology: WordPress
+tier: 2
+title: WordPress Post SMTP plugin Account Takeover
+</threat>
+<threat>
+cpe: n/a
+cve: CVE-2025-59287
+cvss_score: 0
+cwe: n/a
+identified_at: 2025-10-16T00:00:00Z
+investigation_status: complete
+products_affected: Windows Server 2012, Windows Server 2012 R2, Windows Server 2012 R2 (Server Core installation) (truncated list...)
+id: et-00168
+technology: Microsoft
+tier: 3
+title: Windows Server Update Service (WSUS) Remote Code Execution Vulnerability
+</threat>
+<threat>
+cpe: n/a
+cve: CVE-2025-53521, CVE-2025-58153, CVE-2025-59478, CVE-2025-54479, CVE-2025-53860, CVE-2025-58424
+cvss_score: 8
+cwe: n/a
+identified_at: 2025-10-15T09:00:00Z
+investigation_status: complete
+products_affected: BIG-IP
+id: et-00167
+technology: F5
+tier: 3
+title: F5 Review and Response
+</threat>
+`, nil
+}

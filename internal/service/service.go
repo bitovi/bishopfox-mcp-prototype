@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
@@ -54,6 +55,9 @@ var queryAssetsDesc string
 //go:embed prompt/get_assets_overview_link_desc.txt
 var getAssetsOverviewLinkDesc string
 
+//go:embed prompt/get_latest_emerging_threats_desc.txt
+var getLatestEmergingThreatsDesc string
+
 //go:embed prompt/agent_instruction.txt
 var agentInstruction string
 
@@ -75,6 +79,8 @@ func CreateMainService() (Service, error) {
 		QueryAssetsRequest{}, svc.QueryAssetsFunction)
 	fs.AddFunction("bf_api", "get_assets_overview_link", getAssetsOverviewLinkDesc,
 		GetAssetsOverviewLinkRequest{}, svc.GetAssetsOverviewLinkFunction)
+	fs.AddFunction("bf_api", "get_latest_emerging_threats", getLatestEmergingThreatsDesc,
+		GetLatestEmergingThreatsRequest{}, svc.GetLatestEmergingThreatsFunction)
 
 	agent := bricks.NewBedrockAgent(bricks.BedrockAgentConfig{
 		Model:       "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
@@ -102,9 +108,10 @@ func formatRefTitle(header string) string {
 }
 
 // This needs to match the UI formatting code. It might not currently.
-func formatRefHeader(header string) string {
+func formatRefAnchor(header string) string {
 	// Lowercase the header
 	header = strings.ToLower(header)
+	header = regexp.MustCompile(`^(#+)\s*`).ReplaceAllString(header, `$1`)
 	header = strings.ReplaceAll(header, " ", "-")
 
 	// URL encode the header to make it safe for use in URLs
@@ -142,7 +149,7 @@ func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
 				baseUrl,
 				orgID.String(),
 				folder,
-				formatRefHeader(header))
+				formatRefAnchor(header))
 			refURLs = append(refURLs, url)
 		}
 	}

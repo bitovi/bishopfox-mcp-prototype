@@ -1,0 +1,1 @@
+Returns information about the latest emerging threats. Emerging Threats are newly reported threats being investigated by the Bishop Fox Cosmos team, typically linked to one or more new CVE identifiers.
