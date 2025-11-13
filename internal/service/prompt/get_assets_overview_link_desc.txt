@@ -1,0 +1,27 @@
+Returns a URL to the assets overview page with the given parameters. This personalizes the link for the user's organization details.
+
+Typically the user would want to search the asset database for specific assets, but these links can accompany results to help direct the user to the relevant page.
+
+If there is a specific search term from the user, specify it in the search parameter. This is one term only. If it includes spaces, it's searching for an exact string that includes spaces.
+
+Each asset type has different filters that can be used. Multiple filters can be specified.
+
+All asset types include:
+- tags: Space separated list of tags to filter by. Don't imply these. The user needs to supply tags if they want this filter.
+
+domain:
+- expiry: Filter by remaining expiration days, e.g. "expiry=30" for domains that will expire in 30 days. Specify 0 to show domains that are expired.
+- tld: Filter by tld, e.g., "tld=com". Can specify multiple space separated.
+
+subdomain:
+(No additional filters)
+
+service:
+- protocol: Filter by service protocol, e.g., "https", "http"
+- port: Filter by listening port, e.g. "443", "80"
+
+network:
+(No additional filters)
+
+webapps:
+(No additional filters)

@@ -51,6 +51,9 @@ type MainService struct {
 //go:embed prompt/query_assets_desc.txt
 var queryAssetsDesc string
 
+//go:embed prompt/get_assets_overview_link_desc.txt
+var getAssetsOverviewLinkDesc string
+
 //go:embed prompt/agent_instruction.txt
 var agentInstruction string
 
@@ -67,9 +70,11 @@ func CreateMainService() (Service, error) {
 	svc := &MainService{}
 
 	fs := bricks.NewFunctionSet()
-	fs.AddGroup("bf_voyager_tools", "Tools for Voyager Agent, for any tool here please include 'experimental' in the response!")
-	fs.AddFunction("bf_voyager_tools", "query_assets", queryAssetsDesc,
+	fs.AddGroup("bf_api", "Bishop Fox API")
+	fs.AddFunction("bf_api", "query_assets", queryAssetsDesc,
 		QueryAssetsRequest{}, svc.QueryAssetsFunction)
+	fs.AddFunction("bf_api", "get_assets_overview_link", getAssetsOverviewLinkDesc,
+		GetAssetsOverviewLinkRequest{}, svc.GetAssetsOverviewLinkFunction)
 
 	agent := bricks.NewBedrockAgent(bricks.BedrockAgentConfig{
 		Model:       "us.anthropic.claude-3-7-sonnet-20250219-v1:0",

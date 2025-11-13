@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -110,7 +111,7 @@ func initialModel() model {
 	vp := viewport.New(80, 20)
 
 	// Add welcome message
-	welcomeMsg := responseStyle.Render("How can I help you today?")
+	welcomeMsg := responseStyle.Render("Hi, I'm Fox, your assistant to finding things in the Cosmos platform. How can I help you today?")
 	vp.SetContent(welcomeMsg)
 
 	// Initialize spinner
@@ -314,6 +315,8 @@ func (m model) makeRequest(query string) tea.Cmd {
 
 		responseText := strings.TrimSpace(response.Data)
 		responseText = strings.ReplaceAll(responseText, "\\n", "\n")
+		// Replace 3+ newlines with 2 newlines.
+		responseText = regexp.MustCompile("\n{3,}").ReplaceAllString(responseText, "\n\n")
 		if len(response.Refs) > 0 {
 			responseText = fmt.Sprintf("%s\n\nRead More:\n• %s",
 				responseText,

@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
 
@@ -158,7 +161,7 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 		for rows.Next() {
 			err := rows.Err()
 			if err != nil {
-				return fmt.Errorf("query failed: %w", err)
+				return fmt.Errorf("query failed (rows.Next): %w", err)
 			}
 			str, err := pgRowToString(rows)
 			if err != nil {
@@ -172,7 +175,7 @@ func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, erro
 		}
 		err = rows.Err()
 		if err != nil {
-			return fmt.Errorf("query failed: %w", err)
+			return fmt.Errorf("query failed (rows err after): %w", err)
 		}
 
 		fields := rows.FieldDescriptions()
@@ -244,3 +247,74 @@ func (svc *MainService) DescribeAssetsFunction(c bricks.FunctionContext) (any, e
 
 }
 */
+
+type GetAssetsOverviewLinkRequest struct {
+	AssetType string `json:"asset_type" desc:"Type of asset to view, one of [domain, subdomain, ip, service, network, webapp]" required:"true"`
+	Filters   string `json:"filters" desc:"Optional filters to apply, formatted as URL params, e.g. key1=value1&key2=value2" required:"false"`
+	Search    string `json:"search" desc:"Optional search term to filter assets" required:"false"`
+}
+
+func (svc *MainService) GetAssetsOverviewLinkFunction(c bricks.FunctionContext) (any, error) {
+	var req GetAssetsOverviewLinkRequest
+	c.MustBind(&req)
+
+	qc, ok := c.Value(QueryContextKey{}).(QueryContext)
+	if !ok {
+		return nil, ErrMissingContext
+	}
+	log.Debugf("--- Received get assets overview link request ---\n%+v\n---", req)
+
+	baseUrl := fmt.Sprintf("https://ui.api.non.usea2.bf9.io/%s/assets/%s", qc.OrgID.String(), req.AssetType)
+
+	// Note about these translations. See the instructions for this function, we are
+	// avoiding using technical URL params in favor of ubiquitous language. For example,
+	// instead of taking raw dates for expiration time (LLMs are not good with any kind of
+	// math), we take the relative term in days and then programatically translate it
+	// here.
+	timeFormat := "2006-01-02T15:04:05.000Z"
+	filters, err := url.ParseQuery(req.Filters)
+	if err != nil {
+		return "(Error) Invalid filters format. It needs to be formatted as a valid URL query string.", nil
+	}
+	params := url.Values{}
+	for key, values := range filters {
+		key = strings.ToLower(key)
+		switch key {
+		case "expiry": // translate to expiry range
+			days, err := strconv.Atoi(values[0])
+			if err != nil {
+				// invalid input
+				continue
+			}
+			timeNow := time.Now().UTC()
+			timeNow = timeNow.Truncate(time.Hour * 24)
+			if days == 0 {
+				params.Set("expiry", "before,"+timeNow.Add(-time.Millisecond).Format(timeFormat))
+			} else {
+				expiryDate := timeNow.AddDate(0, 0, days)
+				params.Set("expiry", "between,"+expiryDate.Format(timeFormat)+","+timeNow.Format(timeFormat))
+			}
+		case "tld":
+			domains := strings.Split(values[0], " ")
+			for i := range domains {
+				domains[i] = "." + domains[i]
+			}
+			params.Set("domainExtension", strings.Join(domains, ","))
+		case "tags":
+			tags := strings.Split(values[0], " ")
+			params.Set("tags", strings.Join(tags, ","))
+		default:
+			for _, value := range values {
+				params.Add(key, value)
+			}
+		}
+	}
+
+	if req.Search != "" {
+		params.Set("search", req.Search)
+	}
+
+	fullURL, _ := url.Parse(baseUrl)
+	fullURL.RawQuery = params.Encode()
+	return fullURL.String(), nil
+}
