@@ -27,12 +27,18 @@ var ErrMissingContext = errors.New("missing required context value")
 //   - required: Whether the field is required. Set to 'true' to reflect in the MCP schema
 //     that the field is required.
 type GetWeatherRequest struct {
-	City string `json:"city" desc:"The name of the city to get weather for" required:"true"`
+	// Concise descriptions like these convey the usage effectively to LLMs. Examples are
+	// always great, just like in real life. If something is simple enough to be described
+	// in a minimal example like this, do so.
+	City string `json:"city" desc:"e.g. Chicago" required:"true"`
 }
 
 // This is an example response schema. The MCP supports output schemas. Bedrock Action
 // Groups do not. Currently, we are not implementing MCP output schemas (see mcp.go). We
 // believe that output schemas are not entirely useful for LLMs.
+//
+// When using non-string results with Bedrock, our lib is just marshaling to JSON and
+// using that as the text output. We do the same thing with our MCP.
 type GetWeatherResponse struct {
 	Temperature string `json:"temperature"`
 	Condition   string `json:"condition"`
