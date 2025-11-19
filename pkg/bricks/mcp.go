@@ -12,14 +12,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func BindFunctionsToMCPServer(fs *FunctionSet, group string, s *server.MCPServer) error {
+// Binds a FunctionSet to an mcp-go server instance.
+func BindFunctionsToMCPServer(fs *FunctionSet, s *server.MCPServer) error {
 
-	fg, ok := fs.Groups[group]
-	if !ok {
-		return fmt.Errorf("group not defined: %s", group)
-	}
-
-	for _, fn := range fg.Functions {
+	for _, fn := range fs.Functions {
 
 		var toolOpts []mcp.ToolOption
 		t := reflect.TypeOf(fn.Params)
@@ -41,6 +37,9 @@ func BindFunctionsToMCPServer(fs *FunctionSet, group string, s *server.MCPServer
 				props = append(props, mcp.Required())
 			}
 
+			// MCP uses simple JSON types for parameter inputs. One complex type is the
+			// array type, but I believe that type should be avoided given that it can be
+			// complex for the model to understand.
 			if fieldType == reflect.String {
 				toolOpts = append(toolOpts, mcp.WithString(name, props...))
 			} else if fieldType == reflect.Int || fieldType == reflect.Int32 || fieldType == reflect.Int64 {
@@ -67,7 +66,7 @@ func BindFunctionsToMCPServer(fs *FunctionSet, group string, s *server.MCPServer
 				return mcp.NewToolResultError("function invocation failed; invalid input"), nil
 			}
 
-			result, err := fs.Invoke(ctx, group, fn.Name, jsonBytes)
+			result, err := fs.Invoke(ctx, fn.Name, jsonBytes)
 			if err != nil {
 				if errors.Is(err, ErrInvalidArg) {
 					return mcp.NewToolResultError(fmt.Sprintf("function invocation failed; %v", err)), nil
@@ -81,6 +80,13 @@ func BindFunctionsToMCPServer(fs *FunctionSet, group string, s *server.MCPServer
 			case string:
 				return mcp.NewToolResultText(result), nil
 			default:
+				// The MCP supports structured outputs, but this package doesn't support
+				// that currently. If we do want to support that sort of functionality, we
+				// can reflect over the output struct to build a schema and then marshal
+				// according to that for the structured output.
+				//
+				// In both cases, it is still recommended by the spec to include an
+				// unstructured TEXT version of the output.
 				jsonBytes, err := json.Marshal(result)
 				if err != nil {
 					log.Errorln("function invocation error (marshaling result)", err)

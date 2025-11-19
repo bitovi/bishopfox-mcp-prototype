@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/bedrockagentruntime/types"
 	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
 
 	"github.com/google/uuid"
@@ -66,8 +68,6 @@ type Service interface {
 
 // Main/default service implementation.
 type MainService struct {
-	Agent     bricks.Agent
-	functions *bricks.FunctionSet
 }
 
 //go:embed prompt/query_assets_desc.txt
@@ -94,25 +94,6 @@ func (s *MainService) getDBUrl() string {
 func CreateMainService() (Service, error) {
 	svc := &MainService{}
 
-	fs := bricks.NewFunctionSet()
-	fs.AddGroup("bf_api", "Bishop Fox API")
-	fs.AddFunction("bf_api", "query_assets", queryAssetsDesc,
-		QueryAssetsRequest{}, svc.QueryAssetsFunction)
-	fs.AddFunction("bf_api", "get_assets_overview_link", getAssetsOverviewLinkDesc,
-		GetAssetsOverviewLinkRequest{}, svc.GetAssetsOverviewLinkFunction)
-	fs.AddFunction("bf_api", "get_latest_emerging_threats", getLatestEmergingThreatsDesc,
-		GetLatestEmergingThreatsRequest{}, svc.GetLatestEmergingThreatsFunction)
-
-	agent := bricks.NewBedrockAgent(bricks.BedrockAgentConfig{
-		Model:       "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
-		Instruction: agentInstruction,
-		AgentName:   "Voyager",
-		Functions:   fs,
-	})
-
-	svc.Agent = agent
-	svc.functions = fs
-
 	// Self Test
 	if svc.getDBUrl() == "" {
 		return nil, fmt.Errorf("%w; POSTGRES_URL needs to be set to the database connection URL", ErrSelfCheckFailed)
@@ -132,6 +113,8 @@ func formatRefTitle(header string) string {
 func formatRefAnchor(header string) string {
 	// Lowercase the header
 	header = strings.ToLower(header)
+	// and Cosmos does some weird things like including the hash symbols (url encoded) but
+	// removing the first space.
 	header = regexp.MustCompile(`^(#+)\s*`).ReplaceAllString(header, `$1`)
 	header = strings.ReplaceAll(header, " ", "-")
 
@@ -149,12 +132,56 @@ func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
 		sessionID = uuid.New().String()
 	}
 
-	response, err := s.Agent.Query(s.WrapContextForQuery(ctx, orgID, authorization), query, sessionID)
+	// For every request, we are rebuilding our function set and instantiating a new
+	// agent. Why?
+	//
+	// In the future, we might want to have a dynamic function set, created each time an
+	// ask request comes in. This way, you can select what tools are most relevant and
+	// omit the rest to save context space.
+	//
+	// A good approach to selecting relevant tools is to vectorize the user input and
+	// compare against the function descriptions.
+	//
+	// In addition, we may want to set the agent system instruction or other configuration
+	// dynamically based on the request and user context. e.g., adding system instructions
+	// for complex tool selections, or defining user context information such as the
+	// organization name.
+	fs := s.GetFunctions()
+
+	agent := bricks.NewBedrockAgent(bricks.BedrockAgentConfig{
+		// Claude 3.7 is deprecated, but using an old/cheaper model to see how robust it
+		// is.
+		Model:       "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+		Instruction: agentInstruction,
+		AgentName:   "Fox",
+		Functions:   fs,
+
+		// Link to our knowledgebase. To see how this knowledgebase is built, see the
+		// knowledgebase folder. We also have a video on it.
+		Knowledgebases: []types.KnowledgeBase{
+			{
+				Description:     aws.String("Contains documentation on the Cosmos platform, helpful for resolving user queries about platform functionality"),
+				KnowledgeBaseId: aws.String("CETGU0P5D7"),
+			},
+		},
+	})
+
+	// We pass along user information via the request context which is visible when
+	// invoking tools.
+	response, err := agent.Query(s.WrapContextForQuery(ctx, orgID, authorization), query, sessionID)
 	if err != nil {
 		return AskResult{}, err
 	}
 
-	// Translate refs to urls
+	// Translate refs to urls. When we ingest the knowledgebase, we are creating two
+	// custom metadata fields: "header" and "folder".
+	//
+	// "header" is the section header delimiting where the content came from.
+	// "folder" is the knowledgebase folder name.
+	//
+	// Transform these two into this format: Title - <URL>
+	//
+	// The URL format is <buaseurl>/<org_id>/documentation/<folder>#<anchor>
 	var refURLs []string
 	baseUrl := "https://ui.api.non.usea2.bf9.io"
 	for _, ref := range response.Refs {
@@ -197,5 +224,12 @@ func (s *MainService) WrapContextForQuery(ctx context.Context, orgID uuid.UUID,
 // Functions are exposed so they can be bound to external access like MCP servers. The
 // functions themselves are bound to this service instance during initialization.
 func (s *MainService) GetFunctions() *bricks.FunctionSet {
-	return s.functions
+	fs := bricks.NewFunctionSet("bishopfox")
+	fs.AddFunction("query_assets", queryAssetsDesc,
+		QueryAssetsRequest{}, s.QueryAssetsFunction)
+	fs.AddFunction("get_assets_overview_link", getAssetsOverviewLinkDesc,
+		GetAssetsOverviewLinkRequest{}, s.GetAssetsOverviewLinkFunction)
+	fs.AddFunction("get_latest_emerging_threats", getLatestEmergingThreatsDesc,
+		GetLatestEmergingThreatsRequest{}, s.GetLatestEmergingThreatsFunction)
+	return fs
 }

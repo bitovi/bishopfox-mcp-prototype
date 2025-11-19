@@ -23,10 +23,11 @@ func newAuthenticationMiddleware(svc service.Service) server.ToolHandlerMiddlewa
 				return mcp.NewToolResultError("missing Authorization header"), nil
 			}
 
-			// TODO: Validate authorization.
+			// TODO: We can validate authorization here.
 
 			orgID, ok := ctx.Value(orgIDContextKey{}).(string)
 			if !ok || orgID == "" {
+				// TODO: If empty, pull from auth token.
 				return mcp.NewToolResultError("missing organization_id param"), nil
 			}
 			orgUUID, err := uuid.Parse(orgID)
@@ -38,7 +39,6 @@ func newAuthenticationMiddleware(svc service.Service) server.ToolHandlerMiddlewa
 			// For example, there is no configuration for Claude Desktop for specifying
 			// _meta fields.
 
-			// TODO: If empty, pull from auth token.
 			// TODO: Validate access to org.
 
 			ctx = svc.WrapContextForQuery(ctx, orgUUID, auth)
@@ -72,10 +72,10 @@ func addHTTPContext(ctx context.Context, r *http.Request) context.Context {
 	return context.WithValue(ctx, orgIDContextKey{}, orgID)
 }
 
-func runMCPServer(svc service.Service) {
+func newMCPServer(svc service.Service) {
 	// Create a new MCP server
 	serverBase := server.NewMCPServer(
-		"Bishop Fox MCP Prototype",
+		"Cosmos MCP",
 		"1.0.0",
 		server.WithToolCapabilities(false),
 		server.WithRecovery(),
@@ -85,9 +85,7 @@ func runMCPServer(svc service.Service) {
 
 	fs := svc.GetFunctions()
 
-	for groupName := range fs.Groups {
-		bricks.BindFunctionsToMCPServer(fs, groupName, serverBase)
-	}
+	bricks.BindFunctionsToMCPServer(fs, serverBase)
 
 	httpServer := server.NewStreamableHTTPServer(
 		serverBase,

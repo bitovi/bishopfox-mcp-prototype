@@ -26,7 +26,7 @@ func main() {
 		return
 	}
 	router := setupRouter(svc)
-	go runMCPServer(svc)
+	go newMCPServer(svc)
 
 	apiPort := os.Getenv("API_PORT")
 	if apiPort == "" {

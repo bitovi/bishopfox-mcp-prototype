@@ -2,7 +2,7 @@
 
 This is a prototype to demonstrate tool implementation via MCP and Bedrock RETURN_CONTROL.
 
-config/setup.sql contains the database schema.
+config/setup.sql contains the asset database schema.
 
 ## Running the Prototype in a container
 
@@ -14,6 +14,7 @@ Run `./generate_fixtures.py` to generate fixture data in `config/2.fixtures.sql`
 Run `docker compose up` to start the app.
 
 The MCP server is hosted at `http://localhost:8112/mcp` using Streamable HTTP transport.
+The organization_id is passed as a query parameter.
 
 The HTTP server is hosted at `http://localhost:8110/`.
 

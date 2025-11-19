@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -17,17 +18,20 @@ import (
 type BedrockInvokeInput = types.FunctionInvocationInput
 type BedrockInvokeOutput = types.FunctionResult
 
-// BedrockAgent is an agent implementation that uses AWS Bedrock Agent Runtime.
+// BedrockAgent is an agent implementation that uses AWS Bedrock Agent Runtime. The
+// configuration is applied "inline", meaning you don't need to create an agent resource
+// before invoking it. This allows you to do flexible/dynamic configuration per query.
 type BedrockAgent struct {
 	Config BedrockAgentConfig
 }
 
 // Configuration input for a BedrockAgent, passed to NewBedrockAgent.
 type BedrockAgentConfig struct {
-	AgentName   string
-	Model       string
-	Instruction string
-	Functions   *FunctionSet
+	AgentName      string
+	Model          string
+	Instruction    string
+	Functions      *FunctionSet
+	Knowledgebases []types.KnowledgeBase
 }
 
 // AWS Client
@@ -76,8 +80,12 @@ func marshalBedrockFunctionParams(params []types.FunctionParameter) ([]byte, err
 		case types.ParameterTypeNumber:
 			jsonMap[*param.Name], _ = strconv.ParseFloat(*param.Value, 64)
 		case types.ParameterTypeArray:
-			jsonMap[*param.Name] = *param.Value // TODO
+			// TODO: have not experimented much with this. I have seen wierd results with
+			// array fields in the past, for example, the model arbitrarily restricting
+			// itself to one entry only.
+			jsonMap[*param.Name] = *param.Value
 		default:
+			// Any missed cases, just use the string directly.
 			jsonMap[*param.Name] = *param.Value
 		}
 	}
@@ -89,7 +97,12 @@ func marshalBedrockFunctionParams(params []types.FunctionParameter) ([]byte, err
 	return jsonBytes, nil
 }
 
-// Invoke one of our functions from a RETURN_CONTROL flow and return the output.
+// Invoke one of our functions and return the output. This is called during the
+// RETURN_CONTROL flow, i.e., when control is returned to our side from Bedrock to invoke
+// a tool.
+//
+// When an error is returned, the BedrockInvokeOutput returned will have a FAILURE
+// response state that can be sent to Bedrock.
 func (ba *BedrockAgent) invokeFunction(ctx context.Context, input BedrockInvokeInput) (BedrockInvokeOutput, error) {
 	fs := ba.Config.Functions
 	out := types.FunctionResult{
@@ -107,7 +120,12 @@ func (ba *BedrockAgent) invokeFunction(ctx context.Context, input BedrockInvokeI
 		return out, fmt.Errorf("failed to marshal function params: %w", err)
 	}
 
-	result, err := fs.Invoke(ctx, *input.ActionGroup, *input.Function, bodyBytes)
+	if *input.ActionGroup != fs.Name {
+		return out, fmt.Errorf("%w; unknown action group: %s",
+			ErrInvalidArg, *input.ActionGroup)
+	}
+
+	result, err := fs.Invoke(ctx, *input.Function, bodyBytes)
 	if err != nil {
 		return out, fmt.Errorf("function %s.%s failed: %w",
 			*input.ActionGroup, *input.Function, err)
@@ -137,36 +155,41 @@ func (ba *BedrockAgent) invokeFunction(ctx context.Context, input BedrockInvokeI
 	return out, nil
 }
 
+// Create a base inline configuration for invoking a Bedrock Agent.
 func (ba *BedrockAgent) makeBaseInput(sessionID string) bedrockagentruntime.InvokeInlineAgentInput {
 	input := bedrockagentruntime.InvokeInlineAgentInput{
+		// The session ID can be any string you want. Using the same string again will
+		// continue the same session (conversation history). The session is deleted after
+		// a configurable amount of time of no activity. Default is 15 minutes.
 		SessionId:       aws.String(sessionID),
 		FoundationModel: aws.String(ba.Config.Model),
 		Instruction:     aws.String(ba.Config.Instruction),
 		AgentName:       aws.String(ba.Config.AgentName),
-
-		// TODO: Hardcoded test
-		KnowledgeBases: []types.KnowledgeBase{
-			{
-				Description:     aws.String("Contains documentation on the Cosmos platform, helpful for resolving user queries about platform functionality"),
-				KnowledgeBaseId: aws.String("CETGU0P5D7"),
-			},
-		},
+		KnowledgeBases:  ba.Config.Knowledgebases,
 	}
 	if ba.Config.Functions != nil {
-		input.ActionGroups = ba.Config.Functions.GetActionGroups()
+		input.ActionGroups = []types.AgentActionGroup{
+			ba.Config.Functions.GetActionGroup(),
+		}
 	}
 	return input
 }
 
-// Query the Bedrock Agent with the given prompt and return the response.
+// Query the Bedrock Agent with the given prompt.
 func (ba *BedrockAgent) Query(ctx context.Context, inputText string, sessionID string) (QueryResult, error) {
 
 	client := getBedrockAgentRuntime()
 
+	// We're using "inline" agents, meaning that we configure them each time we want to
+	// invoke them. This is more flexible than creating persistent agent resources in AWS
+	// ahead of time. More friendly to code-driven agents.
+	//
+	// However, static agent configurations do have their use cases and can be a viable
+	// alternative.
 	input := ba.makeBaseInput(sessionID)
-	input.InputText = aws.String(inputText)
 
 	// Invoke the agent with the input text.
+	input.InputText = aws.String(inputText)
 	result, err := client.InvokeInlineAgent(ctx, &input)
 	if err != nil {
 		return QueryResult{}, fmt.Errorf("failed to invoke agent: %w", err)
@@ -178,6 +201,7 @@ func (ba *BedrockAgent) Query(ctx context.Context, inputText string, sessionID s
 
 	agentResponse := result.GetStream()
 	for {
+		// The response may appear in multiple events, especially longer responses.
 		ev, ok := <-agentResponse.Events()
 		if !ok {
 			if agentResponse.Err() != nil {
@@ -188,8 +212,18 @@ func (ba *BedrockAgent) Query(ctx context.Context, inputText string, sessionID s
 
 		switch v := ev.(type) {
 		case *types.InlineAgentResponseStreamMemberChunk:
-			// Record output chunks.
+			// A "chunk" is a section of the text response from the model.
+
+			// We'll record all chunks and concatenate them at the end.
 			chunks = append(chunks, string(v.Value.Bytes))
+
+			// In attribution, we can check for citations used. Citations are references
+			// to sources that were used for retrieval augmented generation. For example,
+			// if it used a knowledgebase document, the citations will contain metadata
+			// of what documents were used.
+			//
+			// We have added our own metadata fields to the knowledgebase documents to
+			// help identify where they can be found in the web UI.
 			if v.Value.Attribution != nil {
 				for _, citation := range v.Value.Attribution.Citations {
 
@@ -201,7 +235,10 @@ func (ba *BedrockAgent) Query(ctx context.Context, inputText string, sessionID s
 							meta[k] = string(text)
 						}
 
-						// dedup refs, in case multiple chunks are used from same source
+						// Dedup refs, in case multiple chunks are used from same source.
+						// Note this is only valid for knowledgebase metadata. If we start
+						// to support other sources, then we'd want a different
+						// deduplication strategy.
 						refKey := fmt.Sprintf("%s/%s",
 							meta["x-amz-bedrock-kb-data-source-id"],
 							meta["x-amz-bedrock-kb-source-uri"])
@@ -218,31 +255,46 @@ func (ba *BedrockAgent) Query(ctx context.Context, inputText string, sessionID s
 				}
 			}
 		case *types.InlineAgentResponseStreamMemberReturnControl:
-			// If we get RETURN_CONTROL, call our functions and the invoke the agent again.
+			// In AWS Bedrock, a "RETURN_CONTROL" flow is when the agent defers to the
+			// caller to execute some function (tool) and provide the result before
+			// continuing.
+			//
+			// Models can call multiple tools at once. The system prompt will typically
+			// encourage calling multiple tools at once.
+			//
+			// So, go through the list of invocation inputs, call the desired functions,
+			// and then build a result for the model to continue with. This is basically
+			// submitted as a follow up message: e.g., the model is responding with a
+			// question, and our side is responding with an answer.
 			var results []types.InvocationResultMember
 			for _, rawInv := range v.Value.InvocationInputs {
 				switch inv := rawInv.(type) {
 				case *types.InvocationInputMemberMemberFunctionInvocationInput:
 					resultValue, err := ba.invokeFunction(ctx, inv.Value)
 					if err != nil {
-						fmt.Println("Function invocation error:", err)
+						log.Errorln("Function invocation error:", err)
+						// Fallthrough: the resultValue contains a valid FAILURE state
+						// that is sent back to the model.
 					}
 					result := types.InvocationResultMemberMemberFunctionResult{
 						Value: resultValue,
 					}
 					results = append(results, &result)
+
+					// We could also consider including this tool call and parameters as a
+					// Reference in the output.
 				default:
-					log.Fatalf("Unsupported invocation input type")
+					log.Panicln("Unsupported invocation input type")
 				}
 			}
 
+			// Invoke the agent again with the tool call results.
 			input := ba.makeBaseInput(sessionID)
 			input.InlineSessionState = &types.InlineSessionState{
 				InvocationId:                   v.Value.InvocationId,
 				ReturnControlInvocationResults: results,
 			}
-			// We could also include this as a reference.
-			result, err := client.InvokeInlineAgent(context.TODO(), &input)
+			result, err := client.InvokeInlineAgent(ctx, &input)
 			if err != nil {
 				return QueryResult{}, fmt.Errorf(
 					"failed to invoke inline agent for return control: %v", err)
