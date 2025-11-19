@@ -1,5 +1,8 @@
 package service
 
+// This file contains the implementation for a prototype "service", similar to what Bishop
+// Fox has in their environment.
+
 import (
 	"context"
 	_ "embed"
@@ -19,17 +22,35 @@ import (
 // The key that holds QueryContext.
 type QueryContextKey struct{}
 
-// Holds authentication information for queries/tools.
+// The QueryContext traverses the request lifetime via the context variable, carrying
+// extra information relevant to Cosmos such as the organization_id and authorization
+// token.
+//
+// The authorization token is especially useful if you want to call other APIs on the
+// user's behalf. For example, an asset question could make a call to the asset token
+// service.
+//
+// Keep in mind though that this approach might not be forward compatible if the
+// infrastructure changes to have tokens that aren't forwarded directly to the service, or
+// otherwise cannot be "replayed" like this. In those cases, you may want to consider
+// traditional m2m tokens or other communication approaches (or data duplication) to get
+// the needed data.
 type QueryContext struct {
 	OrgID         uuid.UUID
 	Authorization string
 }
 
+// A reference points to a source of information used in generating a response.
+//
+// Currently we have Bedrock Citations stored in here as type "knowledgebase". Our service
+// formats those as a title and URL.
 type Reference struct {
 	Type string `json:"type"`
 	Ref  string `json:"ref"`
 }
 
+// Result of the Ask function. Contains the response, a session ID for making further
+// requests (which can be set initially by the caller), and any references used.
 type AskResult struct {
 	Response  string   `json:"response"`
 	Refs      []string `json:"refs"`

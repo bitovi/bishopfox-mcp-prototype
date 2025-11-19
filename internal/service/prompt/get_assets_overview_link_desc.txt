@@ -1,4 +1,4 @@
-Returns a URL to the assets overview page with the given parameters. This personalizes the link for the user's organization details.
+Returns a URL to the assets overview page with the given parameters.
 
 Typically the user would want to search the asset database for specific assets, but these links can accompany results to help direct the user to the relevant page.
 

@@ -24,6 +24,20 @@ CREATE TABLE assets (
     PRIMARY KEY (org_id, id)
 ) PARTITION BY LIST (org_id);
 
+-- Our approach here is no indexes other than the org partition. Each org should have a
+-- reasonable number of assets. Some bigname orgs might have a LOT of assets, which MIGHT
+-- need additional indexes, but, for the most part, this table's traffic is MANUAL. The
+-- user needs to directly type something in to query it. It's not part of UI
+-- functionality, so high performance is less of a factor. It should also scale
+-- horizontally across additional readers.
+-- 
+-- A table scan even over a million asset records is not very bad if it's done sparingly.
+-- If we do start to see slowdowns due to high volume assets like IP addresses, those can
+-- be handled separately.
+--
+-- The cost of running AI inference should outweigh the cost of the database queries.
+
+-- Create 5 org partitions.
 CREATE TABLE assets_org_111111111111 PARTITION OF assets FOR VALUES IN ('11111111-1111-1111-1111-111111111111');
 CREATE TABLE assets_org_222222222222 PARTITION OF assets FOR VALUES IN ('22222222-2222-2222-2222-222222222222');
 CREATE TABLE assets_org_333333333333 PARTITION OF assets FOR VALUES IN ('33333333-3333-3333-3333-333333333333');
