@@ -1,4 +1,5 @@
-
+# This service setup creates a Postgres database, applies the initialization scripts
+# (config/*.sql) and starts the Go application in another container.
 services:
   postgres:
     image: postgres:17
@@ -8,6 +9,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
+      # Avoiding port conflicts with other local Postgres instances.
       - "5434:5432"
     volumes:
       - ./config/:/docker-entrypoint-initdb.d/
@@ -24,8 +26,7 @@ services:
     volumes:
       - ./:/app
     ports:
-      - "8110:8110" # http://localhost:8110/ask
-      - "8112:8112" # http://localhost:8112/mcp
+      - "8110:8110" # http://localhost:8110/ask or /mcp
     env_file:
       - .app.env
     command: go run .

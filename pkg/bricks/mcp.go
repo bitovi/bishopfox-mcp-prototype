@@ -12,7 +12,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Binds a FunctionSet to an mcp-go server instance.
+// This binds a FunctionSet to an MCP server instance. You can also configure the server
+// with a ToolFilter which can select which tools the client can see, typically based on
+// permission.
+//
+// Selecting tools based on the user's question is better done in the host side, given
+// that the MCP server is not aware of what question they are actually asking when the
+// client connects and asks for the tool list.
 func BindFunctionsToMCPServer(fs *FunctionSet, s *server.MCPServer) error {
 
 	for _, fn := range fs.Functions {

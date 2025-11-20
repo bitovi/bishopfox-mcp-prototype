@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"net/http"
-	"os"
 	"runtime/debug"
 
 	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
@@ -72,12 +71,17 @@ func addHTTPContext(ctx context.Context, r *http.Request) context.Context {
 	return context.WithValue(ctx, orgIDContextKey{}, orgID)
 }
 
-func newMCPServer(svc service.Service) {
+func newMCPServer(svc service.Service) *server.StreamableHTTPServer {
 	// Create a new MCP server
 	serverBase := server.NewMCPServer(
 		"Cosmos MCP",
 		"1.0.0",
 		server.WithToolCapabilities(false),
+		// Default recovery middleware may not be a good choice. We might want finer
+		// control over what the model sees if a tool call fails. Unlike normal API
+		// failures where the execution terminates, tool failures are returned to the
+		// model and inference may continue, so it matters what shows up in the error
+		// message.
 		server.WithRecovery(),
 		server.WithToolHandlerMiddleware(mcpRecovery),
 		server.WithToolHandlerMiddleware(newAuthenticationMiddleware(svc)),
@@ -87,22 +91,11 @@ func newMCPServer(svc service.Service) {
 
 	bricks.BindFunctionsToMCPServer(fs, serverBase)
 
-	httpServer := server.NewStreamableHTTPServer(
+	return server.NewStreamableHTTPServer(
 		serverBase,
 		server.WithStateLess(true),
 		server.WithEndpointPath("/mcp"),
 		server.WithDisableStreaming(true),
 		server.WithHTTPContextFunc(addHTTPContext),
 	)
-
-	mcpPort := os.Getenv("MCP_PORT")
-	if mcpPort == "" {
-		mcpPort = "8102"
-	}
-
-	binding := ":" + mcpPort
-	log.Infoln("Starting MCP server on", binding)
-	if err := httpServer.Start(binding); err != nil {
-		log.Errorf("Streamable HTTP server error: %v", err)
-	}
 }

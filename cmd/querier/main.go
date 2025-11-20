@@ -1,3 +1,8 @@
+// This tool provides a fancy terminal-based chat interface to interact with the service
+// API. Most of this is vibe coded quickly so it may be a little messy...
+//
+// The main point of interest is makeRequest where it makes the POST request and then
+// records the response text and references.
 package main
 
 import (

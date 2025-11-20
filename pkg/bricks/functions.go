@@ -140,7 +140,8 @@ func (fs *FunctionSet) Invoke(ctx context.Context, function string, input []byte
 		return nil, fmt.Errorf("%w; function %s is not defined", ErrNoFunction, function)
 	}
 
-	// Call the handler
+	// Call the handler. We pass the input into a FunctionContext which the functions can
+	// use to bind parameters.
 	fct := FunctionContextFromJSON(ctx, input)
 	return fn.Handler(fct)
 }

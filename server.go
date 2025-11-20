@@ -4,18 +4,36 @@ import (
 	"fmt"
 
 	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
+	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
-func setupRouter(svc service.Service) *gin.Engine {
+func setupRouter(svc service.Service, mcpServer *server.StreamableHTTPServer) *gin.Engine {
 	r := gin.Default()
+
 	r.POST("/ask", AskHandler(svc))
+
+	// A separate server created from mcp-go handles the /mcp endpoint. Forward requests
+	// from that endpoint to there.
+	//
+	// The MCP server only uses POST endpoints. We use Any because the MCP server also
+	// handles 405 for other method types (which is part of the MCP spec).
+	r.Any("/mcp", func(c *gin.Context) {
+		mcpServer.ServeHTTP(c.Writer, c.Request)
+	})
+
 	return r
 }
 
+// The /ask function invokes the internal LLM host in the service with the given query.
+//
+// So there are two ways to interact with the tools that the service provides. One is
+// through this method, which is handling the LLM internally. The other is through the MCP
+// interface, which is ONLY exposing the tools and doesn't contain any system prompt,
+// model choice, etc.
 func AskHandler(svc service.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		auth := c.GetHeader("Authorization")
@@ -33,7 +51,9 @@ func AskHandler(svc service.Service) gin.HandlerFunc {
 			return
 		}
 
-		// TODO: organization_id validation
+		// TODO: organization_id validation. We want to verify that the Org ID matches
+		// what the auth token allows. We also want to validate the auth token before it
+		// gets in here (part of the standard routing middleware for BF services).
 		orgID := uuid.MustParse(req.OrgID)
 		if req.SessionID != "" {
 			if _, err := uuid.Parse(req.SessionID); err != nil {

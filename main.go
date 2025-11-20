@@ -25,8 +25,9 @@ func main() {
 		log.Errorf("Failed to create service: %v", err)
 		return
 	}
-	router := setupRouter(svc)
-	go newMCPServer(svc)
+
+	mcpServer := newMCPServer(svc)
+	router := setupRouter(svc, mcpServer)
 
 	apiPort := os.Getenv("API_PORT")
 	if apiPort == "" {
