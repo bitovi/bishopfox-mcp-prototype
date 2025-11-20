@@ -1,4 +1,4 @@
-## BishopFox MCP Prototype
+## BishopFox AI Service Prototype
 
 This is a prototype to demonstrate tool implementation via MCP and Bedrock RETURN_CONTROL.
 
@@ -24,7 +24,7 @@ HTTP endpoints:
 
 ## Querier Client
 
-Goto cmd/querier and do `go run .` to run a the vibecoded demo CLI.
+Goto cmd/querier and do `go run .` to run the demo CLI.
 
 ## Additional notes
 

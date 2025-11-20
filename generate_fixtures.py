@@ -87,7 +87,7 @@ def add_domain(org: str, name: str, expires: int) -> dict:
 # Add a randomly generated domain asset for the org and return the new record.
 def add_random_domain(org: str) -> dict:
     name = generate_name() + ".com"
-    if not use_name(name): return add_random_domain(org)
+    if name_exists(name): return add_random_domain(org)
     return add_domain(org, name, random.randint(7, 140))
 
 # Add a subdomain asset for the org and return the new record.
@@ -110,7 +110,7 @@ def add_subdomain(org: str, parent_domain: dict, name: str) -> dict:
 def add_random_subdomain(org: str) -> dict:
     parent = random.choice(list(domains[org].values()))
     name = generate_name() + "." + parent["name"]
-    if not use_name(name): return add_random_subdomain(org)
+    if name_exists(name): return add_random_subdomain(org)
     return add_subdomain(org, parent, name)
 
 # Add a hostname service asset for the org and return the new record.
@@ -162,8 +162,7 @@ def add_random_hostname_service(org: str) -> dict:
     cpes = [
         # todo: generate zero or more CPEs
     ]
-    # should always be unique since we are creating a subdomain.
-    use_name(protocol + "://" + parent["name"] + ":" + str(port) + path)
+    # The name should always be unique since we are creating a random subdomain.
     hs = add_hostname_service(org, parent, port, protocol, path, ips, cpes)
     return hs
 
