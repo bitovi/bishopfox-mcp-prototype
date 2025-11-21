@@ -1,7 +1,9 @@
-package service
+// Maybe a poor name for this package. This package provides tools and prompts for model
+// context. It isn't necessarily "MCP" specific.
+package mcp
 
 import (
-	"encoding/json"
+	_ "embed"
 	"errors"
 	"fmt"
 	"net/url"
@@ -9,13 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
 	"github.com/bitovi/bishopfox-mcp-prototype/pkg/bricks"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	log "github.com/sirupsen/logrus"
 )
+
+type Service = service.Service
 
 // This file defines functions that can be invoked by AI models. The request and response
 // schema is defined using structs and reflection.
@@ -60,26 +62,23 @@ type GetWeatherResponse struct {
 // Example function implementation. When an LLM makes a tool request, it is routed to
 // these handlers. The flow for Bedrock invoking a function hosted by the client
 // application is referred to as RETURN_CONTROL.
-func (svc *MainService) GetWeatherFunction(c bricks.FunctionContext) (any, error) {
+func GetWeatherFunction(c bricks.FunctionContext) (any, error) {
 	var req GetWeatherRequest
 	c.MustBind(&req)
 
 	// The query context allows us to pass data from the service or MCP server into the
 	// function execution. This is where we can forward things like authentication
 	// information (e.g., what orgs the user has access to) and the organization_id.
-	qc, ok := c.Value(QueryContextKey{}).(QueryContext)
-	if !ok {
-		return nil, ErrMissingContext
-	}
+	qc := service.MustGetQueryContext(c)
 
-	log.Debugln("authorization:", qc.Authorization)
+	log.Debugln("Authorization:", qc.Authorization)
 
-	// Simulate a weather API call
-	response := GetWeatherResponse{
+	// Simulate a weather API call. Our package doesn't support structured outputs, but
+	// this is what a structured output might look like in the handler.
+	return GetWeatherResponse{
 		Temperature: "72°F",
 		Condition:   "Sunny",
-	}
-	return response, nil
+	}, nil
 }
 
 // This is our input for query_assets, it accepts a raw SQL query.
@@ -94,211 +93,60 @@ type QueryAssetsRequest struct {
 	Query string `json:"query" desc:"The SQL query to execute" required:"true"`
 }
 
-// Convert an arbitrary SQL result to a string representation. Fields are separated by
-// '|'. Certain field types may not be supported properly.
-//
-// This is used to format the results when the AI is querying the asset database. We've
-// seen decent results with this "CSV" type of output. While we could benefit from
-// formatting certain fields in certain ways, we can't depend on any field names, since
-// the model might declare aliases.
-//
-// For best results, the fields themselves should contain values that are meaningful
-// without reading the CSV header. Take for example this output:
-//
-//	service|example.com|80
-//
-// It is likely that this means that "the service example.com is running on port 80",
-// so the model wouldn't need to see "service|domain|port" for context. That's not to say
-// the header should be omitted. It just helps to have the context as clear as possible.
-func pgRowToString(rows pgx.Rows) (string, error) {
-	values, err := rows.Values()
-	if err != nil {
-		return "", fmt.Errorf("failed to get row values: %w", err)
-	}
-
-	var rowStrings []string
-	fields := rows.FieldDescriptions()
-	for i, v := range values {
-		var valueString string
-
-		if v == nil {
-			rowStrings = append(rowStrings, "")
-			continue
-		}
-
-		// Check the type of the value to format the fields.
-		switch fields[i].DataTypeOID {
-		case pgtype.JSONBOID:
-			// JSON field, format as JSON string
-			jsonBytes, _ := json.Marshal(v)
-			valueString = string(jsonBytes)
-		case pgtype.UUIDOID:
-			// UUID field, format as hex UUID.
-			valueString = uuid.UUID(v.([16]byte)).String()
-		case pgtype.TextArrayOID, pgtype.VarcharArrayOID:
-			// Text Array, e.g., TEXT[], format as a comma separated string
-			arrayValues := []string{}
-			for _, s := range v.([]any) {
-				if s != nil {
-					arrayValues = append(arrayValues, fmt.Sprint(s))
-				}
-			}
-			valueString = strings.Join(arrayValues, ",")
-		default:
-			// Otherwise, do our best and just rely on the default string conversion
-			// This is not appropriate for certain types. For example, if we did this to
-			// a UUID, we would get a byte array string instead of the hex format.
-			valueString = fmt.Sprint(v)
-		}
-		rowStrings = append(rowStrings, valueString)
-	}
-
-	return strings.Join(rowStrings, "|"), nil
-}
-
-// Returns a short hash for the given organization ID.
-func getOrgHash(orgID uuid.UUID) string {
-	// Simple hash function: take the last 12 characters of the UUID and treat that as the
-	// hash. This is the same thing Cosmos does when partitioning asset tables.
-	return orgID.String()[len(orgID.String())-12:]
-}
-
-var errQueryFailed = errors.New("query failed")
-
 // Handler for query_assets. Queries the asset database with a given SQL query and returns
 // the result. Enforces security so that the calling organization can only access its own
 // data.
-func (svc *MainService) QueryAssetsFunction(c bricks.FunctionContext) (any, error) {
+func QueryAssetsFunction(c bricks.FunctionContext) (any, error) {
 	var req QueryAssetsRequest
 	c.MustBind(&req)
+	qc := service.MustGetQueryContext(c)
+	svc := qc.Service
 
-	qc, ok := c.Value(QueryContextKey{}).(QueryContext)
-	if !ok {
-		return nil, ErrMissingContext
-	}
-	// Test print of auth token.
-	log.Debugln("authorization:", qc.Authorization)
+	// Test print of auth token and incoming query.
+	log.Debugln("Authorization:", qc.Authorization)
 	log.Debugf("--- Received query request ---\n%s\n---", req.Query)
 
-	// In a real situation, we'd use connection pooling. Here, for simplicity, we are just
-	// opening and closing a new connection for each request.
-	connUrl := svc.getDBUrl()
-	conn, err := pgx.Connect(c, connUrl)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close(c)
-
-	var output string
-
-	role_suffix := getOrgHash(qc.OrgID)
-
-	err = pgx.BeginFunc(c, conn, func(tx pgx.Tx) error {
-		// Before executing the query, set the role to the customer-specific role that is
-		// set up. This might not exist if the org id has not been initialized yet.
-		//
-		// Even though we change the role, care needs to be taken because the SESSION role
-		// is still the superuser. For example, if the user was allowed to run multiple
-		// queries, they could change back to the superuser first.
-		//
-		// Careful for builtin Postgres functions as well. There might be functions that
-		// can expose unwanted info if the user is running in a superuser session. There
-		// aren't any that I'm aware of, but it's something to keep in mind.
-		_, err := tx.Exec(c, `
-			SET LOCAL ROLE customer_query_role_`+role_suffix+`;
-		`)
-		if err != nil {
-			return fmt.Errorf("failed to set org_id; %w", err)
-		}
-
-		// We're doing a simple SQL replacement here. Ideally we would want to parse the
-		// query and replace tokens properly, but that has a high overhead of complexity
-		// with a large build dependency (Postgres).
-		//
-		// For now, we're just instructing the model to query from tbl_assets, and then
-		// using that as a replacement token to query their real table.
-		query := req.Query
-		query = strings.ReplaceAll(query, "tbl_assets", "assets_org_"+role_suffix)
-
-		rows, err := tx.Query(c, query)
-		if err != nil {
-			// If the query fails, there is likely a syntax error from the model. We want
-			// the model to correct itself. When we return errQueryFailed, the response
-			// to the model will not be treated as a system error, but rather as a
-			// message that tells the model that they made a mistake.
-			return fmt.Errorf("%w; %w", errQueryFailed, err)
-		}
-		defer rows.Close()
-
-		var results []string
-		resultsTruncated := false
-		for rows.Next() {
-			err := rows.Err()
-			if err != nil {
-				return fmt.Errorf("query failed (rows.Next): %w", err)
-			}
-			str, err := pgRowToString(rows)
-			if err != nil {
-				return err
-			}
-
-			// Truncate the results at 15 rows. Ideally, we would want to enforce a LIMIT
-			// on the query itself, but that is complex to do properly, needing to parse
-			// Postgres queries. This is a less performant solution that should work for
-			// most situations.
-			//
-			// We could also tell the model to apply LIMIT 16 where possible (plus one to
-			// detect truncation at 15), but that is additional unwanted context, so we
-			// don't recommend doing that. The proper way to do it is parsing and
-			// modifying the query.
-			results = append(results, str)
-			if len(results) >= 15 {
-				resultsTruncated = true
-				break
-			}
-		}
-		err = rows.Err()
-		if err != nil {
-			return fmt.Errorf("query failed (rows err after): %w", err)
-		}
-
-		// The response to the model is a raw CSV format with a header row. The model
-		// understands this fairly well, but it may be worth testing other formats, such
-		// as JSON, XML, etc. Those incur higher context overhead, but can make it easier
-		// to distinguish values in the response.
-		fields := rows.FieldDescriptions()
-		var header []string
-		for _, f := range fields {
-			header = append(header, f.Name)
-		}
-		output += strings.Join(header, "|") + "\n"
-		if len(results) == 0 {
-			output += "-- No results --"
-			return nil
-		}
-		output += strings.Join(results, "\n")
-		if resultsTruncated {
-			// If the output was truncated at 15 rows, we tell the model in plain text
-			// that the result was truncated, and this should usually prompt the model to
-			// inform the user that they should narrow their search.
-			output += "\n-- Result set truncated; more than 15 rows returned --"
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		if errors.Is(err, errQueryFailed) {
-			// Treat query failed as a message to the model, not a system error. We want
-			// the model to understand the error and try to correct itself.
-			log.Debugln("query failed:", err)
-			return "The query failed to execute with this error:\n" + err.Error(), nil
-		}
+	result, err := svc.QueryAssets(c, qc.OrgID, req.Query)
+	if errors.Is(err, service.ErrQueryFailed) {
+		// Treat query failed as a message to the model; don't break the execution. We
+		// want the model to see the error in case it can correct itself (it can
+		// correct syntax errors).
+		log.Debugln("Query failed:", err)
+		return "The query failed to execute with this error:\n" + err.Error(), nil
+	} else if err != nil {
 		return nil, fmt.Errorf("db query failed; %w", err)
 	}
 
-	log.Debugln("query output:\n", output)
-	return output, nil
+	// Format the results when the AI is querying the asset database. We've seen
+	// decent results with this "CSV" type of output. While we could benefit from
+	// formatting certain fields in certain ways, we can't depend on any field names,
+	// since the model might declare aliases.
+	//
+	// For best results, the fields themselves should contain values that are
+	// meaningful without reading the CSV header. Take for example this output:
+	//
+	//  service|example.com|80
+	//
+	// It is likely that this means that "the service example.com is running on port
+	// 80", so the model wouldn't need to see "service|domain|port" for context.
+	// That's not to say the header should be omitted. It just helps to have the
+	// context as clear as possible.
+	//
+	// There is room for more experimentation of what is the best format to use when
+	// returning results for the model.
+	outputStrings := []string{}
+	outputStrings = append(outputStrings, strings.Join(result.Columns, "|"))
+	for _, row := range result.Rows {
+		outputStrings = append(outputStrings, strings.Join(row, "|"))
+	}
+	if result.Truncated {
+		outputStrings = append(outputStrings, "-- Result set truncated; more than 15 rows returned --")
+	}
+	if len(result.Rows) == 0 {
+		outputStrings = append(outputStrings, "-- No results --")
+	}
+
+	return strings.Join(outputStrings, "\n"), nil
 }
 
 // The describe_asset function is intended to query an asset and related assets
@@ -308,8 +156,8 @@ type DescribeAssetRequest struct {
 	AssetID string `json:"asset_id" desc:"ID of the asset to describe" required:"true"`
 }
 
-/*
-func (svc *MainService) DescribeAssetFunction(c bricks.FunctionContext) (any, error) {
+/********
+func (svc *Service) DescribeAssetFunction(c bricks.FunctionContext) (any, error) {
 	var req DescribeAssetRequest
 	c.MustBind(&req)
 
@@ -341,7 +189,7 @@ func (svc *MainService) DescribeAssetFunction(c bricks.FunctionContext) (any, er
 	}
 
 }
-*/
+********/
 
 // get_assets_overview_link is a function that generates links to the web UI for viewing
 // assets. Some rationale behind the schema:
@@ -361,14 +209,13 @@ type GetAssetsOverviewLinkRequest struct {
 	Search    string `json:"search" desc:"Optional search term to filter assets" required:"false"`
 }
 
-func (svc *MainService) GetAssetsOverviewLinkFunction(c bricks.FunctionContext) (any, error) {
+// Interestingly, this function doesn't really require the service. All of the work here
+// is input translation, so there is nothing to delegate to the service layer.
+func GetAssetsOverviewLinkFunction(c bricks.FunctionContext) (any, error) {
 	var req GetAssetsOverviewLinkRequest
 	c.MustBind(&req)
+	qc := service.MustGetQueryContext(c)
 
-	qc, ok := c.Value(QueryContextKey{}).(QueryContext)
-	if !ok {
-		return nil, ErrMissingContext
-	}
 	log.Debugf("--- Received get assets overview link request ---\n%+v\n---", req)
 
 	// We can pull the organization_id out of the query context to be used in the URL.
@@ -444,10 +291,7 @@ func (svc *MainService) GetAssetsOverviewLinkFunction(c bricks.FunctionContext) 
 // returns a list of emerging_threat data for testing against.
 type GetLatestEmergingThreatsRequest struct{}
 
-func (svc *MainService) GetLatestEmergingThreatsFunction(c bricks.FunctionContext) (any, error) {
-	// No input parameters
-	_ = GetLatestEmergingThreatsRequest{}
-
+func GetLatestEmergingThreatsFunction(c bricks.FunctionContext) (any, error) {
 	// For demonstration purposes, returning a static list of threats.
 	//
 	// Rationale behind this function
@@ -534,4 +378,28 @@ tier: 3
 title: F5 Review and Response
 </threat>
 `, nil
+}
+
+//go:embed prompt/query_assets_desc.txt
+var queryAssetsDesc string
+
+//go:embed prompt/query_assets_extended_desc.txt
+var queryAssetsExtendedDesc string
+
+//go:embed prompt/get_assets_overview_link_desc.txt
+var getAssetsOverviewLinkDesc string
+
+//go:embed prompt/get_latest_emerging_threats_desc.txt
+var getLatestEmergingThreatsDesc string
+
+// This is just like routing in an API.
+func GetFunctions(svc Service) *bricks.FunctionSet {
+	fs := bricks.NewFunctionSet("bishopfox")
+	fs.AddFunction("query_assets", queryAssetsDesc, queryAssetsExtendedDesc,
+		QueryAssetsRequest{}, QueryAssetsFunction)
+	fs.AddFunction("get_assets_overview_link", getAssetsOverviewLinkDesc, "",
+		GetAssetsOverviewLinkRequest{}, GetAssetsOverviewLinkFunction)
+	fs.AddFunction("get_latest_emerging_threats", getLatestEmergingThreatsDesc, "",
+		GetLatestEmergingThreatsRequest{}, GetLatestEmergingThreatsFunction)
+	return fs
 }

@@ -40,6 +40,7 @@ type QueryContextKey struct{}
 type QueryContext struct {
 	OrgID         uuid.UUID
 	Authorization string
+	Service       Service
 }
 
 // A reference points to a source of information used in generating a response.
@@ -62,25 +63,21 @@ type AskResult struct {
 // Service interface for consumers.
 type Service interface {
 	Ask(ctx context.Context, query string, orgID uuid.UUID, authorization string, sessionID string) (AskResult, error)
-	WrapContextForQuery(ctx context.Context, orgID uuid.UUID, authorization string) context.Context
-	GetFunctions() *bricks.FunctionSet
+	SetFunctions(*bricks.FunctionSet)
+
+	QueryAssets(ctx context.Context, orgID uuid.UUID, query string) (QueryAssetsResult, error)
 }
+
+//go:embed agent_instructions.txt
+var agentInstruction string
 
 // Main/default service implementation.
 type MainService struct {
+	// This is the complete function set available in the service. Depending on the
+	// request certain functions could be excluded for context space optimization or
+	// permission. (Not implemented in this prototype.)
+	functions *bricks.FunctionSet
 }
-
-//go:embed prompt/query_assets_desc.txt
-var queryAssetsDesc string
-
-//go:embed prompt/get_assets_overview_link_desc.txt
-var getAssetsOverviewLinkDesc string
-
-//go:embed prompt/get_latest_emerging_threats_desc.txt
-var getLatestEmergingThreatsDesc string
-
-//go:embed prompt/agent_instruction.txt
-var agentInstruction string
 
 var ErrSelfCheckFailed = errors.New("self check failed")
 
@@ -132,9 +129,6 @@ func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
 		sessionID = uuid.New().String()
 	}
 
-	// For every request, we are rebuilding our function set and instantiating a new
-	// agent. Why?
-	//
 	// In the future, we might want to have a dynamic function set, created each time an
 	// ask request comes in. This way, you can select what tools are most relevant and
 	// omit the rest to save context space.
@@ -146,7 +140,18 @@ func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
 	// dynamically based on the request and user context. e.g., adding system instructions
 	// for complex tool selections, or defining user context information such as the
 	// organization name.
-	fs := s.GetFunctions()
+	fs := s.functions
+
+	// Bedrock has a limit of how much text can be part of an action description. We have
+	// the "extended description" in the tool instruction section to work around this.
+	//
+	// With dynamic tool selection, only tools that are included for the query should
+	// affect the system prompt.
+	for _, fn := range fs.Functions {
+		if fn.ExtendedDescription != "" {
+			agentInstruction += fmt.Sprintf("<toolInstructions>\n%s\n</toolInstructions>", fn.ExtendedDescription)
+		}
+	}
 
 	agent := bricks.NewBedrockAgent(bricks.BedrockAgentConfig{
 		// Claude 3.7 is deprecated, but using an old/cheaper model to see how robust it
@@ -168,7 +173,7 @@ func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
 
 	// We pass along user information via the request context which is visible when
 	// invoking tools.
-	response, err := agent.Query(s.WrapContextForQuery(ctx, orgID, authorization), query, sessionID)
+	response, err := agent.Query(WrapContextForTool(ctx, orgID, authorization, s), query, sessionID)
 	if err != nil {
 		return AskResult{}, err
 	}
@@ -209,27 +214,29 @@ func (s *MainService) Ask(ctx context.Context, query string, orgID uuid.UUID,
 	}, nil
 }
 
-// Wrap a given context for an agent query, adding authorization information. This context
+// Wrap a given context for a tool call, adding authorization information. This context
 // is passed through the agent to functions. Particularly useful for forwarding user
 // authentication and organization restrictions.
-func (s *MainService) WrapContextForQuery(ctx context.Context, orgID uuid.UUID,
-	authorization string) context.Context {
+func WrapContextForTool(ctx context.Context, orgID uuid.UUID,
+	authorization string, svc Service) context.Context {
 	qc := QueryContext{
 		OrgID:         orgID,
 		Authorization: authorization,
+		Service:       svc,
 	}
 	return context.WithValue(ctx, QueryContextKey{}, qc)
 }
 
-// Functions are exposed so they can be bound to external access like MCP servers. The
-// functions themselves are bound to this service instance during initialization.
-func (s *MainService) GetFunctions() *bricks.FunctionSet {
-	fs := bricks.NewFunctionSet("bishopfox")
-	fs.AddFunction("query_assets", queryAssetsDesc,
-		QueryAssetsRequest{}, s.QueryAssetsFunction)
-	fs.AddFunction("get_assets_overview_link", getAssetsOverviewLinkDesc,
-		GetAssetsOverviewLinkRequest{}, s.GetAssetsOverviewLinkFunction)
-	fs.AddFunction("get_latest_emerging_threats", getLatestEmergingThreatsDesc,
-		GetLatestEmergingThreatsRequest{}, s.GetLatestEmergingThreatsFunction)
-	return fs
+var ErrNoQueryContext = errors.New("no query context in context")
+
+func MustGetQueryContext(ctx context.Context) QueryContext {
+	qc, ok := ctx.Value(QueryContextKey{}).(QueryContext)
+	if !ok {
+		panic(ErrNoQueryContext)
+	}
+	return qc
+}
+
+func (s *MainService) SetFunctions(fs *bricks.FunctionSet) {
+	s.functions = fs
 }

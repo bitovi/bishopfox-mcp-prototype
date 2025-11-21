@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/bitovi/bishopfox-mcp-prototype/internal/mcp"
 	"github.com/bitovi/bishopfox-mcp-prototype/internal/service"
 
 	log "github.com/sirupsen/logrus"
@@ -26,7 +27,10 @@ func main() {
 		return
 	}
 
-	mcpServer := newMCPServer(svc)
+	fs := mcp.GetFunctions(svc)
+	svc.SetFunctions(fs) // That circular dependency we noted.
+
+	mcpServer := newMCPServer(svc, fs)
 	router := setupRouter(svc, mcpServer)
 
 	apiPort := os.Getenv("API_PORT")
