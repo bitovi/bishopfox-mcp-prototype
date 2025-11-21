@@ -1,7 +1,6 @@
+// This package is similar to what you see in a Bishop Fox service repo. It provides
+// the implementation that covers business logic/services and the data model.
 package service
-
-// This file contains the implementation for a prototype "service", similar to what Bishop
-// Fox has in their environment.
 
 import (
 	"context"

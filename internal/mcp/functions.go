@@ -1,5 +1,6 @@
 // Maybe a poor name for this package. This package provides tools and prompts for model
-// context. It isn't necessarily "MCP" specific.
+// context. It isn't necessarily "MCP" specific. This is a portion of the API layer that
+// handles tool call requests.
 package mcp
 
 import (
