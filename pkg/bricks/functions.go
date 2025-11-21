@@ -17,6 +17,9 @@ type Function struct {
 	Name string
 	// Description of the function, visible to the model.
 	Description string
+	// Extended description of the function, visible to the model. This may be
+	// concatenated to the description depending on the implementation.
+	ExtendedDescription string
 	// Parameter structure. This should be an empty instance or a nil pointer to a struct
 	// that will be reflected over for the input schema.
 	Params any
@@ -118,13 +121,15 @@ func (fs *FunctionSet) GetActionGroup() types.AgentActionGroup {
 
 // Add a function. The name and description describe the function to the model. The params
 // should be an empty struct instance e.g., MyParamsStruct{}, used for reflection only.
-func (fs *FunctionSet) AddFunction(name string, description string, params any, handler FunctionHandler) {
+func (fs *FunctionSet) AddFunction(name string, description string,
+	extendedDescription string, params any, handler FunctionHandler) {
 
 	fn := Function{
-		Name:        name,
-		Description: description,
-		Params:      params,
-		Handler:     handler,
+		Name:                name,
+		Description:         description,
+		ExtendedDescription: extendedDescription,
+		Params:              params,
+		Handler:             handler,
 	}
 
 	fs.Functions[name] = fn

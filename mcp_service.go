@@ -40,7 +40,7 @@ func newAuthenticationMiddleware(svc service.Service) server.ToolHandlerMiddlewa
 
 			// TODO: Validate access to org.
 
-			ctx = svc.WrapContextForQuery(ctx, orgUUID, auth)
+			ctx = service.WrapContextForTool(ctx, orgUUID, auth, svc)
 
 			// Proceed to the next handler
 			return next(ctx, request)
@@ -71,7 +71,7 @@ func addHTTPContext(ctx context.Context, r *http.Request) context.Context {
 	return context.WithValue(ctx, orgIDContextKey{}, orgID)
 }
 
-func newMCPServer(svc service.Service) *server.StreamableHTTPServer {
+func newMCPServer(svc service.Service, fs *bricks.FunctionSet) *server.StreamableHTTPServer {
 	// Create a new MCP server
 	serverBase := server.NewMCPServer(
 		"Cosmos MCP",
@@ -86,8 +86,6 @@ func newMCPServer(svc service.Service) *server.StreamableHTTPServer {
 		server.WithToolHandlerMiddleware(mcpRecovery),
 		server.WithToolHandlerMiddleware(newAuthenticationMiddleware(svc)),
 	)
-
-	fs := svc.GetFunctions()
 
 	bricks.BindFunctionsToMCPServer(fs, serverBase)
 

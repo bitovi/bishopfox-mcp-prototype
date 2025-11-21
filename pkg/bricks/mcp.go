@@ -59,7 +59,11 @@ func BindFunctionsToMCPServer(fs *FunctionSet, s *server.MCPServer) error {
 			}
 		}
 
-		toolOpts = append(toolOpts, mcp.WithDescription(fn.Description))
+		fullDesc := fn.Description
+		if fn.ExtendedDescription != "" {
+			fullDesc += "\n\n" + fn.ExtendedDescription
+		}
+		toolOpts = append(toolOpts, mcp.WithDescription(fullDesc))
 		tool := mcp.NewTool(fn.Name, toolOpts...)
 
 		s.AddTool(tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
